@@ -20,6 +20,7 @@ cargo install git-lore
 ```
 
 **Want Semantic Search?** To enable the local AI Memvid vector search module:
+
 ```bash
 cargo install git-lore --features semantic-search
 ```
@@ -33,6 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/JussMor/git-lore/main/install.sh | 
 ```
 
 To install with Semantic Search enabled via the script:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JussMor/git-lore/main/install.sh | bash -s -- --features semantic-search
 ```
