@@ -12,6 +12,7 @@ type Props = {
 };
 
 const relationOrder: RelationType[] = [
+  "scope_membership",
   "same_scope",
   "same_path",
   "same_kind",
@@ -20,6 +21,8 @@ const relationOrder: RelationType[] = [
 
 const relationClass = (type: RelationType) => {
   switch (type) {
+    case "scope_membership":
+      return "border-rose-800 text-rose-200 bg-rose-950/40";
     case "same_scope":
       return "border-amber-800 text-amber-200 bg-amber-950/40";
     case "same_path":
@@ -110,6 +113,7 @@ export function RelationInsights({ atoms, selectedAtomId }: Props) {
 
   const stats = useMemo(() => {
     const counts: Record<RelationType, number> = {
+      scope_membership: 0,
       temporal: 0,
       same_scope: 0,
       same_path: 0,

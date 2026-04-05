@@ -1,22 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  Activity,
-  AlertTriangle,
-  Folder,
-  GitBranch,
-  Layers,
-  Plus,
-  RefreshCw,
-  ShieldCheck,
-  Terminal,
-} from "lucide-react";
+import { Folder, Layers, RefreshCw, ShieldCheck, Terminal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { ActivityConsole } from "./components/ActivityConsole";
+import { AtomDetailsPanel } from "./components/AtomDetailsPanel";
 import { LoreBrainGraph } from "./components/LoreBrainGraph";
-import { RelationInsights } from "./components/RelationInsights";
-import { SignalInsights } from "./components/SignalInsights";
+import { LoreSidebar } from "./components/LoreSidebar";
 
 //This file should not be more than 1k lines
 export interface LoreAtom {
@@ -75,6 +65,19 @@ type AtomContextReport = {
   historical_decisions: GitDecisionSummary[];
 };
 
+type CommitDiffReport = {
+  commit_hash: string;
+  subject: string;
+  diff: string;
+  truncated: boolean;
+};
+
+type GitContextCommit = {
+  commit_hash: string;
+  subject: string;
+  trailer_values: string[];
+};
+
 type MarkAtomInput = {
   title: string;
   body?: string;
@@ -102,26 +105,7 @@ type LogEntry = {
   createdAt: string;
 };
 
-type ConsoleTab = "activity" | "commands";
-
-const stateTextClass = (state: string) => {
-  switch (state) {
-    case "accepted":
-      return "text-emerald-400";
-    case "deprecated":
-      return "text-amber-400";
-    case "draft":
-      return "text-gray-400";
-    default:
-      return "text-blue-400";
-  }
-};
-
-const humanize = (value: string) =>
-  value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+type ConsoleTab = "activity" | "commands" | "tools";
 
 const normalizeState = (state: string): AtomStateKey => {
   const value = state.trim().toLowerCase();
@@ -215,6 +199,13 @@ function App() {
     null,
   );
   const [contextLoading, setContextLoading] = useState(false);
+  const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(
+    null,
+  );
+  const [selectedCommitDiff, setSelectedCommitDiff] =
+    useState<CommitDiffReport | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState<string>("");
 
   const filteredAtoms = useMemo(
     () =>
@@ -227,42 +218,32 @@ function App() {
 
   const selectedAtom = atoms.find((atom) => atom.id === selectedAtomId) ?? null;
 
-  const shortHash = (value: string) => value.slice(0, 7);
-
-  const whyThisMatters = useMemo(() => {
-    if (!selectedAtom) {
-      return [] as string[];
+  const gitContextCommits = useMemo<GitContextCommit[]>(() => {
+    if (!atomContext) {
+      return [];
     }
 
-    const points = [
-      `${humanize(selectedAtom.kind)} is currently ${humanize(selectedAtom.state)}.`,
-    ];
+    const grouped = new Map<string, GitContextCommit>();
 
-    if (selectedAtom.scope) {
-      points.push(`Scope guard: affects ${selectedAtom.scope}.`);
+    for (const decision of atomContext.historical_decisions) {
+      const existing = grouped.get(decision.commit_hash);
+
+      if (!existing) {
+        grouped.set(decision.commit_hash, {
+          commit_hash: decision.commit_hash,
+          subject: decision.subject,
+          trailer_values: [decision.trailer_value],
+        });
+        continue;
+      }
+
+      if (!existing.trailer_values.includes(decision.trailer_value)) {
+        existing.trailer_values.push(decision.trailer_value);
+      }
     }
 
-    if (selectedAtom.path) {
-      points.push(`File impact: ${selectedAtom.path}.`);
-    }
-
-    const decisionHits = atomContext?.historical_decisions.length ?? 0;
-    if (decisionHits > 0) {
-      points.push(
-        `${decisionHits} related git decisions were found for this area.`,
-      );
-    } else {
-      points.push("No prior git decision trail was found for this atom path.");
-    }
-
-    if (atomContext && atomContext.constraints.length > 0) {
-      points.push(
-        `${atomContext.constraints.length} active constraints currently reinforce this rationale.`,
-      );
-    }
-
-    return points;
-  }, [atomContext, selectedAtom]);
+    return [...grouped.values()];
+  }, [atomContext]);
 
   useEffect(() => {
     if (filteredAtoms.length === 0) {
@@ -320,6 +301,9 @@ function App() {
   useEffect(() => {
     if (!selectedAtom || !projectPath) {
       setAtomContext(null);
+      setSelectedCommitHash(null);
+      setSelectedCommitDiff(null);
+      setDiffError("");
       return;
     }
 
@@ -340,6 +324,63 @@ function App() {
 
     fetchContext();
   }, [projectPath, selectedAtom]);
+
+  useEffect(() => {
+    if (gitContextCommits.length === 0) {
+      setSelectedCommitHash(null);
+      setSelectedCommitDiff(null);
+      setDiffError("");
+      return;
+    }
+
+    setSelectedCommitHash((previous) => {
+      if (
+        previous &&
+        gitContextCommits.some((commit) => commit.commit_hash === previous)
+      ) {
+        return previous;
+      }
+      return gitContextCommits[0].commit_hash;
+    });
+  }, [gitContextCommits]);
+
+  useEffect(() => {
+    if (!projectPath || !selectedCommitHash) {
+      setSelectedCommitDiff(null);
+      setDiffError("");
+      return;
+    }
+
+    const fetchDiff = async () => {
+      setDiffLoading(true);
+      setDiffError("");
+
+      try {
+        const report = await invoke<CommitDiffReport>("commit_diff", {
+          path: projectPath,
+          input: {
+            commit_hash: selectedCommitHash,
+            file_path:
+              atomContext?.file_path ?? selectedAtom?.path ?? undefined,
+          },
+        });
+        setSelectedCommitDiff(report);
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        setSelectedCommitDiff(null);
+        setDiffError(message);
+      } finally {
+        setDiffLoading(false);
+      }
+    };
+
+    fetchDiff();
+  }, [
+    projectPath,
+    selectedCommitHash,
+    atomContext?.file_path,
+    selectedAtom?.path,
+  ]);
 
   useEffect(() => {
     persistProjectPath(projectPath);
@@ -559,6 +600,32 @@ function App() {
     await loadWorkspace(path);
   };
 
+  const openAtomFileInEditor = async (filePath: string) => {
+    const nextPath = filePath.trim();
+    if (!projectPath) {
+      pushLog("error", "Choose a project path first.");
+      return;
+    }
+    if (!nextPath) {
+      pushLog("error", "This atom has no file path.");
+      return;
+    }
+
+    try {
+      await invoke<string>("open_file_in_editor", {
+        path: projectPath,
+        input: {
+          file_path: nextPath,
+          line: 1,
+        },
+      });
+      pushLog("success", `Opened file in VS Code: ${nextPath}`);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      pushLog("error", `Open file failed: ${message}`);
+    }
+  };
+
   useEffect(() => {
     if (!projectPath) {
       return;
@@ -752,7 +819,7 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#1e1e1e] text-[#cccccc] font-sans selection:bg-[#264f78]">
+    <div className="relative flex h-screen w-screen overflow-hidden bg-[#1e1e1e] text-[#cccccc] font-sans selection:bg-[#264f78]">
       <div className="w-12 bg-[#252526] flex flex-col items-center py-4 space-y-4 border-r border-[#333333]">
         <button
           className="p-2 bg-[#37373d] text-white rounded cursor-pointer hover:bg-[#505050]"
@@ -790,140 +857,32 @@ function App() {
         </button>
       </div>
 
-      <div className="w-64 bg-[#252526] flex flex-col border-r border-[#333333]">
-        <div className="border-b border-[#333333] px-4 py-3 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-semibold text-sm">LOCAL REPO & LORE</span>
-            <button
-              className="rounded bg-[#0e639c] px-2 py-1 text-[11px] font-medium text-white hover:bg-[#1177bb] disabled:opacity-60"
-              onClick={chooseProject}
-              disabled={loading}
-            >
-              Choose
-            </button>
-          </div>
-          <button
-            className="w-full rounded border border-[#3c3c3c] bg-[#1f1f1f] px-2 py-1 text-left text-[11px] text-gray-300 hover:border-[#555] disabled:opacity-60"
-            onClick={chooseProject}
-            disabled={loading}
-          >
-            {projectPath || "Choose a project folder..."}
-          </button>
-          {isMissingLoreError ? (
-            <button
-              className="w-full rounded border border-[#2b5f2f] bg-[#1a2f1d] px-2 py-1 text-left text-[11px] text-emerald-200 hover:bg-[#204327] disabled:opacity-60"
-              onClick={initializeWorkspace}
-              disabled={working || loading}
-            >
-              Initialize .lore in this folder
-            </button>
-          ) : null}
-          <span
-            className="text-[10px] text-gray-500 truncate block"
-            title={root}
-          >
-            {root || (loading ? "Loading workspace..." : "No project selected")}
-          </span>
-        </div>
-
-        <div className="flex-1 overflow-y-auto pt-2 text-sm">
-          <div className="px-3 py-1 flex justify-between items-center group cursor-pointer hover:bg-[#2a2d2e]">
-            <div className="flex items-center space-x-2">
-              <GitBranch size={16} className="text-[#007acc]" />
-              <span>main</span>
-            </div>
-            <span className="text-gray-500 text-xs">HEAD</span>
-          </div>
-
-          <div className="mt-4 px-3 mb-1 text-xs font-semibold text-gray-400 uppercase tracking-widest flex justify-between">
-            <span>
-              .lore ATOMS ({filteredAtoms.length}/{atoms.length})
-            </span>
-            <button
-              className="text-gray-300 hover:text-white"
-              onClick={() => setShowCreateAtom((value) => !value)}
-              title="Create atom"
-            >
-              <Plus size={14} className="cursor-pointer" />
-            </button>
-          </div>
-
-          {showCreateAtom ? (
-            <div className="mx-3 mb-3 rounded border border-[#3a3a3a] bg-[#1f1f1f] p-2 space-y-2">
-              <input
-                className="w-full rounded border border-[#404040] bg-[#111111] px-2 py-1 text-xs text-gray-200"
-                placeholder="Title"
-                value={newAtomTitle}
-                onChange={(event) => setNewAtomTitle(event.target.value)}
-              />
-              <textarea
-                className="w-full rounded border border-[#404040] bg-[#111111] px-2 py-1 text-xs text-gray-200"
-                placeholder="Body (optional)"
-                value={newAtomBody}
-                onChange={(event) => setNewAtomBody(event.target.value)}
-                rows={2}
-              />
-              <input
-                className="w-full rounded border border-[#404040] bg-[#111111] px-2 py-1 text-xs text-gray-200"
-                placeholder="Scope (optional)"
-                value={newAtomScope}
-                onChange={(event) => setNewAtomScope(event.target.value)}
-              />
-              <input
-                className="w-full rounded border border-[#404040] bg-[#111111] px-2 py-1 text-xs text-gray-200"
-                placeholder="File path (optional)"
-                value={newAtomPath}
-                onChange={(event) => setNewAtomPath(event.target.value)}
-              />
-              <select
-                className="w-full rounded border border-[#404040] bg-[#111111] px-2 py-1 text-xs text-gray-200"
-                value={newAtomKind}
-                onChange={(event) =>
-                  setNewAtomKind(event.target.value as MarkAtomInput["kind"])
-                }
-              >
-                <option value="decision">decision</option>
-                <option value="assumption">assumption</option>
-                <option value="open_question">open_question</option>
-                <option value="signal">signal</option>
-              </select>
-              <button
-                className="w-full rounded bg-[#0e639c] px-2 py-1 text-xs font-semibold text-white hover:bg-[#1177bb] disabled:opacity-60"
-                onClick={createAtom}
-                disabled={working || loading}
-              >
-                Create Atom
-              </button>
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="mx-3 mb-2 rounded border border-red-900 bg-red-950/60 px-3 py-2 text-xs text-red-200">
-              {error}
-            </div>
-          ) : null}
-
-          {filteredAtoms.length === 0 ? (
-            <div className="px-5 py-2 text-xs text-gray-500 italic">
-              {loading
-                ? "Loading atoms..."
-                : "No atoms found for current filters."}
-            </div>
-          ) : (
-            filteredAtoms.map((atom) => (
-              <button
-                key={atom.id}
-                className="w-full px-3 py-1 flex items-center space-x-2 text-left text-gray-300 cursor-pointer hover:bg-[#2a2d2e]"
-                title={atom.id}
-                onClick={() => setSelectedAtomId(atom.id)}
-              >
-                <Activity size={14} className={stateTextClass(atom.state)} />
-                <span className="truncate">{atom.title}</span>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
+      <LoreSidebar
+        projectPath={projectPath}
+        loading={loading}
+        working={working}
+        isMissingLoreError={isMissingLoreError}
+        root={root}
+        error={error}
+        atomsCount={atoms.length}
+        filteredAtoms={filteredAtoms}
+        showCreateAtom={showCreateAtom}
+        newAtomTitle={newAtomTitle}
+        newAtomBody={newAtomBody}
+        newAtomScope={newAtomScope}
+        newAtomPath={newAtomPath}
+        newAtomKind={newAtomKind}
+        onChooseProject={chooseProject}
+        onInitializeWorkspace={initializeWorkspace}
+        onToggleCreateAtom={() => setShowCreateAtom((value) => !value)}
+        onNewAtomTitleChange={setNewAtomTitle}
+        onNewAtomBodyChange={setNewAtomBody}
+        onNewAtomScopeChange={setNewAtomScope}
+        onNewAtomPathChange={setNewAtomPath}
+        onNewAtomKindChange={setNewAtomKind}
+        onCreateAtom={createAtom}
+        onSelectAtom={setSelectedAtomId}
+      />
 
       <div className="flex-1 flex bg-[#1e1e1e]">
         <div className="flex-1 flex flex-col border-r border-[#333333]">
@@ -1041,167 +1000,50 @@ function App() {
             logs={logs}
             commandText={commandText}
             commandBusy={commandRunning || loading || working}
+            defaultFilePath={selectedAtom?.path ?? ""}
             onTabChange={setActivityDockTab}
             onToggleOpen={() => setActivityDockOpen((value) => !value)}
             onCommandTextChange={setCommandText}
             onRunCommand={executeConsoleCommand}
+            onToolContext={async () =>
+              "Tool context is not wired in this UI mode."
+            }
+            onToolMemorySearch={async () =>
+              "Tool memory search is not wired in this UI mode."
+            }
+            onToolPropose={async () =>
+              "Tool propose is not wired in this UI mode."
+            }
+            onToolStateSnapshot={async () =>
+              "Tool state snapshot is not wired in this UI mode."
+            }
+            onToolMemoryPreflight={async () =>
+              "Tool memory preflight is not wired in this UI mode."
+            }
+            onToolStateTransitionPreview={async () =>
+              "Tool state preview is not wired in this UI mode."
+            }
           />
         </div>
 
-        <div className="w-80 flex flex-col bg-[#1e1e1e]">
-          <div className="h-10 bg-[#252526] border-b border-[#333333] flex items-center px-4 font-semibold text-sm">
-            Atom Details
-          </div>
-          <div className="flex-1 p-4 overflow-y-auto text-sm">
-            {selectedAtom ? (
-              <>
-                <div className="text-lg font-bold mb-2 text-white">
-                  {selectedAtom.title}
-                </div>
-                <div className="text-gray-400 mb-4 border-b border-[#444] pb-2">
-                  {humanize(selectedAtom.kind)} · {humanize(selectedAtom.state)}
-                </div>
-                <div className="bg-[#2d2d2d] p-3 rounded font-mono text-xs text-gray-300">
-                  <div className="text-green-400 mb-2">
-                    id: {selectedAtom.id}
-                  </div>
-                  <div className="mb-2">
-                    <strong>Scope:</strong> {selectedAtom.scope || "Global"}
-                  </div>
-                  <div className="mb-2">
-                    <strong>Path:</strong> {selectedAtom.path || "Not set"}
-                  </div>
-                  {selectedAtom.body && (
-                    <div className="mt-2 text-gray-400 whitespace-pre-wrap">
-                      {selectedAtom.body}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 rounded border border-[#3a3a3a] bg-[#1f1f1f] p-3">
-                  <div className="mb-2 text-xs font-semibold text-gray-300">
-                    Why This Matters
-                  </div>
-                  <div className="space-y-1 text-xs text-gray-300">
-                    {whyThisMatters.map((point) => (
-                      <div key={point}>• {point}</div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded border border-[#3a3a3a] bg-[#1f1f1f] p-3">
-                  <div className="mb-2 text-xs font-semibold text-gray-300">
-                    Git Context
-                  </div>
-                  {contextLoading ? (
-                    <div className="text-xs text-gray-500">
-                      Loading git context...
-                    </div>
-                  ) : atomContext &&
-                    atomContext.historical_decisions.length > 0 ? (
-                    <div className="max-h-40 space-y-2 overflow-y-auto pr-1 text-xs">
-                      {atomContext.historical_decisions.map((decision) => (
-                        <div
-                          key={`${decision.commit_hash}-${decision.trailer_value}`}
-                          className="rounded border border-[#333] bg-[#161616] p-2"
-                        >
-                          <div className="font-semibold text-blue-200">
-                            {shortHash(decision.commit_hash)} ·{" "}
-                            {decision.subject}
-                          </div>
-                          <div className="mt-1 text-gray-400">
-                            {decision.trailer_value}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-500">
-                      No git context found for this atom path yet.
-                    </div>
-                  )}
-
-                  {atomContext && atomContext.constraints.length > 0 ? (
-                    <div className="mt-3 rounded border border-[#333] bg-[#161616] p-2 text-xs text-gray-300">
-                      <div className="mb-1 font-semibold text-gray-200">
-                        Active Constraints
-                      </div>
-                      <div className="space-y-1">
-                        {atomContext.constraints
-                          .slice(0, 4)
-                          .map((constraint) => (
-                            <div key={constraint} className="text-gray-400">
-                              • {constraint}
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="mt-4 rounded border border-[#3a3a3a] bg-[#1f1f1f] p-3">
-                  <div className="mb-2 text-xs font-semibold text-gray-300">
-                    Lifecycle Transition
-                  </div>
-                  <select
-                    className="mb-2 w-full rounded border border-[#404040] bg-[#111111] px-2 py-1 text-xs text-gray-200"
-                    value={targetState}
-                    onChange={(event) =>
-                      setTargetState(
-                        event.target.value as SetStateInput["state"],
-                      )
-                    }
-                  >
-                    <option value="draft">draft</option>
-                    <option value="proposed">proposed</option>
-                    <option value="accepted">accepted</option>
-                    <option value="deprecated">deprecated</option>
-                  </select>
-                  <textarea
-                    className="mb-2 w-full rounded border border-[#404040] bg-[#111111] px-2 py-1 text-xs text-gray-200"
-                    rows={3}
-                    placeholder="Reason for transition"
-                    value={stateReason}
-                    onChange={(event) => setStateReason(event.target.value)}
-                  />
-                  <button
-                    className="w-full rounded bg-[#0e639c] px-2 py-1 text-xs font-semibold text-white hover:bg-[#1177bb] disabled:opacity-60"
-                    onClick={updateAtomState}
-                    disabled={working || loading}
-                  >
-                    Apply State
-                  </button>
-                </div>
-
-                <RelationInsights
-                  atoms={filteredAtoms}
-                  selectedAtomId={selectedAtomId}
-                />
-
-                <SignalInsights atoms={atoms} selectedAtomId={selectedAtomId} />
-
-                {status && status.contradictions.length > 0 ? (
-                  <div className="mt-4 rounded border border-amber-900 bg-amber-950/50 p-3 text-xs text-amber-200">
-                    <div className="mb-2 inline-flex items-center gap-1 font-semibold">
-                      <AlertTriangle size={12} />
-                      Contradictions
-                    </div>
-                    {status.contradictions.slice(0, 3).map((item) => (
-                      <div key={`${item.key}-${item.kind}`} className="mb-2">
-                        <div className="font-medium">{item.key}</div>
-                        <div>{item.message}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div className="text-gray-500 italic mt-10 text-center">
-                Pick a project folder, then select an atom from the graph
-              </div>
-            )}
-          </div>
-        </div>
+        <AtomDetailsPanel
+          selectedAtom={selectedAtom}
+          contextLoading={contextLoading}
+          gitContextCommits={gitContextCommits}
+          selectedCommitHash={selectedCommitHash}
+          onSelectCommitHash={setSelectedCommitHash}
+          diffLoading={diffLoading}
+          diffError={diffError}
+          selectedCommitDiff={selectedCommitDiff}
+          targetState={targetState}
+          onTargetStateChange={setTargetState}
+          stateReason={stateReason}
+          onStateReasonChange={setStateReason}
+          onApplyState={updateAtomState}
+          onOpenFile={openAtomFileInEditor}
+          working={working}
+          loading={loading}
+        />
       </div>
     </div>
   );

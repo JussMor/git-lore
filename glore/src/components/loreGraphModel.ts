@@ -9,6 +9,7 @@ export interface GraphAtom {
 }
 
 export type RelationType =
+  | "scope_membership"
   | "temporal"
   | "same_scope"
   | "same_path"
@@ -22,7 +23,17 @@ export interface GraphEdge {
   explanation: string;
 }
 
-export interface GraphNode extends GraphAtom {
+export type GraphNodeType = "atom" | "scope";
+
+export interface GraphNode {
+  id: string;
+  title: string;
+  nodeType: GraphNodeType;
+  kind: string;
+  state: string;
+  scope?: string;
+  path?: string;
+  created_unix_seconds: number;
   x: number;
   y: number;
   radius: number;
@@ -34,13 +45,6 @@ export interface GraphModel {
 }
 
 const GROUP_ORDER = ["accepted", "proposed", "draft", "deprecated"];
-
-const CENTER_MAP: Record<string, { x: number; y: number }> = {
-  accepted: { x: 0.72, y: 0.36 },
-  proposed: { x: 0.3, y: 0.32 },
-  draft: { x: 0.28, y: 0.74 },
-  deprecated: { x: 0.7, y: 0.74 },
-};
 
 const stateKey = (value: string) => value.trim().toLowerCase();
 
@@ -63,6 +67,8 @@ const relationKey = (left: string, right: string, type: RelationType) =>
 
 const relationLabel = (type: RelationType) => {
   switch (type) {
+    case "scope_membership":
+      return "scope member";
     case "same_scope":
       return "same scope";
     case "same_path":
@@ -74,7 +80,7 @@ const relationLabel = (type: RelationType) => {
   }
 };
 
-const createEdges = (atoms: GraphAtom[]) => {
+const createAtomRelationEdges = (atoms: GraphAtom[]) => {
   const edges: GraphEdge[] = [];
   const known = new Set<string>();
 
@@ -182,48 +188,181 @@ const createEdges = (atoms: GraphAtom[]) => {
   return edges;
 };
 
+const scopeInfoFromAtom = (atom: GraphAtom) => {
+  const label = atom.scope?.trim() || "Global";
+  return {
+    key: normalize(atom.scope) || "global",
+    label,
+  };
+};
+
+const sortedScopeEntries = (atoms: GraphAtom[]) => {
+  const grouped = new Map<
+    string,
+    {
+      key: string;
+      label: string;
+      atoms: GraphAtom[];
+    }
+  >();
+
+  for (const atom of atoms) {
+    const info = scopeInfoFromAtom(atom);
+    const existing = grouped.get(info.key);
+    if (!existing) {
+      grouped.set(info.key, {
+        key: info.key,
+        label: info.label,
+        atoms: [atom],
+      });
+      continue;
+    }
+
+    existing.atoms.push(atom);
+  }
+
+  return [...grouped.values()].sort((left, right) => {
+    if (right.atoms.length !== left.atoms.length) {
+      return right.atoms.length - left.atoms.length;
+    }
+
+    return left.label.localeCompare(right.label);
+  });
+};
+
+const scopeNodeId = (scopeKey: string) => `scope::${scopeKey}`;
+
+type BuildNodesResult = {
+  nodes: GraphNode[];
+  atomScopeNodeIds: Map<string, string>;
+};
+
 const buildNodes = (
   atoms: GraphAtom[],
   width: number,
   height: number,
-): GraphNode[] => {
-  const grouped = new Map<string, GraphAtom[]>();
+): BuildNodesResult => {
+  const scopeEntries = sortedScopeEntries(atoms);
+  const nodes: GraphNode[] = [];
+  const atomScopeNodeIds = new Map<string, string>();
 
-  for (const groupName of GROUP_ORDER) {
-    grouped.set(groupName, []);
+  if (scopeEntries.length === 0) {
+    return {
+      nodes,
+      atomScopeNodeIds,
+    };
   }
+
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const ringRadius = Math.max(120, Math.min(width, height) * 0.28);
+
+  scopeEntries.forEach((entry, scopeIndex) => {
+    const angleOffset = -Math.PI / 2;
+    const angle =
+      scopeEntries.length === 1
+        ? angleOffset
+        : (scopeIndex / scopeEntries.length) * Math.PI * 2 + angleOffset;
+
+    const scopeX =
+      scopeEntries.length === 1
+        ? centerX
+        : centerX + Math.cos(angle) * ringRadius;
+    const scopeY =
+      scopeEntries.length === 1
+        ? centerY
+        : centerY + Math.sin(angle) * ringRadius;
+
+    const scopeNode: GraphNode = {
+      id: scopeNodeId(entry.key),
+      title: entry.label,
+      nodeType: "scope",
+      kind: "scope",
+      state: "scope",
+      scope: entry.label,
+      created_unix_seconds: 0,
+      x: scopeX,
+      y: scopeY,
+      radius: Math.min(28, 18 + Math.ceil(Math.sqrt(entry.atoms.length) * 2)),
+    };
+
+    nodes.push(scopeNode);
+
+    const byState = new Map<string, GraphAtom[]>();
+    for (const state of GROUP_ORDER) {
+      byState.set(state, []);
+    }
+
+    const sortedAtoms = [...entry.atoms].sort(
+      (left, right) => left.created_unix_seconds - right.created_unix_seconds,
+    );
+
+    for (const atom of sortedAtoms) {
+      const key = stateKey(atom.state);
+      const bucket = byState.get(key) ?? byState.get("proposed");
+      bucket?.push(atom);
+      byState.set(key, bucket ?? [atom]);
+    }
+
+    GROUP_ORDER.forEach((state, stateIndex) => {
+      const atomsInState = byState.get(state) ?? [];
+      if (atomsInState.length === 0) {
+        return;
+      }
+
+      const stateAngle =
+        (stateIndex / GROUP_ORDER.length) * Math.PI * 2 - Math.PI / 2;
+      const stateCenterX = scopeX + Math.cos(stateAngle) * 60;
+      const stateCenterY = scopeY + Math.sin(stateAngle) * 60;
+
+      atomsInState.forEach((atom, atomIndex) => {
+        const ring = Math.floor(atomIndex / 6);
+        const slot = atomIndex % 6;
+        const spread = 16 + ring * 20;
+        const wobble = (hash(atom.id) % 1000) / 1000;
+        const angle = (slot / 6) * Math.PI * 2 + wobble * 0.9;
+
+        atomScopeNodeIds.set(atom.id, scopeNode.id);
+        nodes.push({
+          ...atom,
+          nodeType: "atom",
+          scope: atom.scope?.trim() || "Global",
+          x: stateCenterX + Math.cos(angle) * spread,
+          y: stateCenterY + Math.sin(angle) * spread,
+          radius: 9,
+        });
+      });
+    });
+  });
+
+  return {
+    nodes,
+    atomScopeNodeIds,
+  };
+};
+
+const createScopeMembershipEdges = (
+  atoms: GraphAtom[],
+  atomScopeNodeIds: Map<string, string>,
+): GraphEdge[] => {
+  const edges: GraphEdge[] = [];
 
   for (const atom of atoms) {
-    const key = stateKey(atom.state);
-    const bucket = grouped.get(key) ?? grouped.get("proposed");
-    bucket?.push(atom);
-    grouped.set(key, bucket ?? [atom]);
-  }
+    const scopeNode = atomScopeNodeIds.get(atom.id);
+    if (!scopeNode) {
+      continue;
+    }
 
-  const nodes: GraphNode[] = [];
-
-  for (const [groupName, groupAtoms] of grouped.entries()) {
-    const center = CENTER_MAP[groupName] ?? CENTER_MAP.proposed;
-    const cx = width * center.x;
-    const cy = height * center.y;
-
-    groupAtoms.forEach((atom, index) => {
-      const ring = Math.floor(index / 7);
-      const slot = index % 7;
-      const spread = 36 + ring * 44;
-      const wobble = (hash(atom.id) % 1000) / 1000;
-      const angle = (slot / 7) * Math.PI * 2 + wobble * 0.8;
-
-      nodes.push({
-        ...atom,
-        x: cx + Math.cos(angle) * spread,
-        y: cy + Math.sin(angle) * spread,
-        radius: 9,
-      });
+    edges.push({
+      id: relationKey(scopeNode, atom.id, "scope_membership"),
+      source: scopeNode,
+      target: atom.id,
+      type: "scope_membership",
+      explanation: `belongs to scope: ${atom.scope?.trim() || "Global"}`,
     });
   }
 
-  return nodes;
+  return edges;
 };
 
 export const buildGraphModel = (
@@ -231,13 +370,18 @@ export const buildGraphModel = (
   width = 1060,
   height = 620,
 ): GraphModel => {
-  const nodes = buildNodes(atoms, width, height);
-  const edges = createEdges(atoms);
+  const { nodes, atomScopeNodeIds } = buildNodes(atoms, width, height);
+  const edges = [
+    ...createAtomRelationEdges(atoms),
+    ...createScopeMembershipEdges(atoms, atomScopeNodeIds),
+  ];
   return { nodes, edges };
 };
 
 export const edgeColor = (type: RelationType) => {
   switch (type) {
+    case "scope_membership":
+      return "#fb7185";
     case "same_scope":
       return "#f59e0b";
     case "same_path":

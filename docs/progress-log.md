@@ -33,3 +33,10 @@ This file records completed implementation slices and the next handoff point.
 - Added explicit `git-lore set-state` transitions with audited reason/actor logging, and introduced PRISM stale-signal hygiene (ignore/prune stale signals in conflict and hard-lock checks).
 - Added `docs/capabilities-ui.html`, a focused capabilities dashboard that can load `.test/.lore`, separates command views into "listar" and "explicar", and exposes all major CLI/MCP capabilities with practical command snippets.
 - Added `docs/.test-lore-manifest.json` and auto-bootstrap logic so `docs/capabilities-ui.html` now self-configures from `.test/.lore` on page load with a fallback loader path.
+- Polished the Glore atom details inspector with tighter spacing, smaller typography, and a cooler muted panel palette to better match the reference UI.
+- Tightened the Atom Details typography further to an XS density, making titles, metadata, and action labels more concise.
+- Switched the Atom Details panel to the neutral gray app-shell background so it matches the rest of the UI instead of the earlier blue-tinted surface.
+- Updated the Atom Details "Open In VS Code" action to open the file alongside its parent folder so VS Code lands in the project context.
+- Compactified the Atom Details Git Context rows and moved full lore-ref details into hover tooltips to reduce cut-off content.
+- Stripped bracketed internal IDs from the visible Git Context row text and widened the rail padding so the status dot no longer clips.
+- Reworked the Git Context rail into per-row connector segments so the tree can grow with proper start and finish handling.

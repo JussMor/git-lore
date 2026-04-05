@@ -23,6 +23,8 @@ type ViewState = {
 const short = (value: string, max = 22) =>
   value.length > max ? `${value.slice(0, max - 1)}...` : value;
 
+const scopeNodeFill = "#162235";
+
 const relationPath = (
   sourceX: number,
   sourceY: number,
@@ -223,6 +225,7 @@ export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
               (edge.source === selectedAtomId ||
                 edge.target === selectedAtomId);
             const faded = selectedAtomId && !selected;
+            const isScopeMembership = edge.type === "scope_membership";
 
             return (
               <path
@@ -230,9 +233,12 @@ export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
                 d={relationPath(source.x, source.y, target.x, target.y)}
                 fill="none"
                 stroke={edgeColor(edge.type)}
-                strokeOpacity={faded ? 0.08 : selected ? 0.9 : 0.3}
-                strokeWidth={selected ? 2.6 : 1.4}
+                strokeOpacity={
+                  faded ? 0.08 : selected ? 0.9 : isScopeMembership ? 0.22 : 0.3
+                }
+                strokeWidth={selected ? 2.6 : isScopeMembership ? 1.1 : 1.4}
                 strokeLinecap="round"
+                strokeDasharray={isScopeMembership ? "3 3" : undefined}
               >
                 <title>{`${edgeLabel(edge.type)} | ${edge.explanation}`}</title>
               </path>
@@ -240,12 +246,55 @@ export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
           })}
 
           {model.nodes.map((node) => {
-            const isSelected = selectedAtomId === node.id;
-            const isSignal = node.kind.trim().toLowerCase() === "signal";
+            const isScope = node.nodeType === "scope";
+            const isSelected = !isScope && selectedAtomId === node.id;
+            const isSignal =
+              !isScope && node.kind.trim().toLowerCase() === "signal";
             const dimmed =
               !!selectedAtomId &&
               !isSelected &&
               !connectedWithSelection.has(node.id);
+
+            if (isScope) {
+              return (
+                <g key={node.id} opacity={dimmed ? 0.42 : 1}>
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={node.radius + 3}
+                    fill={scopeNodeFill}
+                    stroke={
+                      connectedWithSelection.has(node.id)
+                        ? "#93c5fd"
+                        : "#475569"
+                    }
+                    strokeWidth={
+                      connectedWithSelection.has(node.id) ? 2.2 : 1.4
+                    }
+                  />
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={node.radius - 4}
+                    fill="none"
+                    stroke="#334155"
+                    strokeWidth={1}
+                    strokeDasharray="2 3"
+                  />
+                  <text
+                    x={node.x}
+                    y={node.y + 4}
+                    fill="#dbeafe"
+                    textAnchor="middle"
+                    fontSize={11}
+                    fontWeight={600}
+                  >
+                    {short(node.title, 18)}
+                  </text>
+                  <title>{`Scope cluster: ${node.title}`}</title>
+                </g>
+              );
+            }
 
             return (
               <g
@@ -299,8 +348,14 @@ export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
       </svg>
 
       <div className="absolute left-3 top-3 z-20 rounded-md border border-[#333] bg-[#0f1011]/95 px-3 py-2 text-[11px] text-gray-300">
-        <div className="mb-1 font-semibold text-gray-200">Brain Clusters</div>
+        <div className="mb-1 font-semibold text-gray-200">
+          Clusters And Levels
+        </div>
         <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2.5 w-2.5 rounded-full border border-slate-400 bg-slate-800" />
+            <span>Scope cluster</span>
+          </div>
           {["accepted", "proposed", "draft", "deprecated"].map((state) => (
             <div key={state} className="flex items-center gap-2">
               <span
@@ -323,6 +378,7 @@ export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
         <div className="mb-1 font-semibold text-gray-200">Relation Types</div>
         <div className="space-y-1">
           {[
+            ["scope_membership", "scope membership"],
             ["temporal", "time neighbor"],
             ["same_scope", "same scope"],
             ["same_path", "same path"],

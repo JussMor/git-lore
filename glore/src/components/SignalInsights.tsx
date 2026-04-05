@@ -16,6 +16,7 @@ const stateOrder = ["accepted", "proposed", "draft", "deprecated"];
 const normalize = (value?: string) => value?.trim().toLowerCase() ?? "";
 
 const relationOrder: RelationType[] = [
+  "scope_membership",
   "same_scope",
   "same_path",
   "same_kind",
@@ -24,6 +25,8 @@ const relationOrder: RelationType[] = [
 
 const relationClass = (type: RelationType) => {
   switch (type) {
+    case "scope_membership":
+      return "border-rose-800 text-rose-200 bg-rose-950/40";
     case "same_scope":
       return "border-amber-800 text-amber-200 bg-amber-950/40";
     case "same_path":
@@ -49,12 +52,12 @@ const stateClass = (state: string) => {
 };
 
 export function SignalInsights({ atoms, selectedAtomId }: Props) {
-  const atomMap = useMemo(
-    () => new Map(atoms.map((atom) => [atom.id, atom])),
-    [atoms],
-  );
-
   const model = useMemo(() => buildGraphModel(atoms), [atoms]);
+
+  const nodeTitleMap = useMemo(
+    () => new Map(model.nodes.map((node) => [node.id, node.title])),
+    [model.nodes],
+  );
 
   const signals = useMemo(
     () =>
@@ -95,6 +98,7 @@ export function SignalInsights({ atoms, selectedAtomId }: Props) {
 
   const relationCounts = useMemo(() => {
     const counts: Record<RelationType, number> = {
+      scope_membership: 0,
       temporal: 0,
       same_scope: 0,
       same_path: 0,
@@ -135,12 +139,12 @@ export function SignalInsights({ atoms, selectedAtomId }: Props) {
 
         return {
           id: counterpartId,
-          title: atomMap.get(counterpartId)?.title ?? counterpartId,
+          title: nodeTitleMap.get(counterpartId) ?? counterpartId,
           relation: edge.type,
         };
       })
       .slice(0, 6);
-  }, [atomMap, model.edges, selectedSignal]);
+  }, [model.edges, nodeTitleMap, selectedSignal]);
 
   if (signals.length === 0) {
     return (
