@@ -1,6 +1,6 @@
 [package]
 name = "git-lore"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "Un sistema basado en Git para documentar restricciones (Lore) a nivel de historial y sistema de archivos, con servidor MCP."
 authors = ["El Equipo de Everfaz"]
@@ -10,7 +10,12 @@ readme = "README.md"
 keywords = ["git", "mcp", "documentation", "cli", "ai"]
 categories = ["command-line-utilities", "development-tools"]
 
+[features]
+default = []
+semantic-search = ["dep:memvid-core"]
+
 [dependencies]
+memvid-core = { version = "2.0", optional = true, features = ["lex", "vec"] }
 anyhow = "1"
 clap = { version = "=4.5.20", features = ["derive"] }
 tree-sitter = "=0.20.10"

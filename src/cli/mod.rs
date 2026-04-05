@@ -723,6 +723,14 @@ fn sync(args: SyncArgs) -> Result<()> {
     let repository_root = git::discover_repository(workspace.root())?;
     let atoms = git::sync_workspace_from_git_history(&repository_root, &workspace)?;
 
+    #[cfg(feature = "semantic-search")]
+    {
+        let state = workspace.load_state()?;
+        let accepted = workspace.load_accepted_atoms()?;
+        crate::mcp::semantic::rebuild_index(workspace.root(), &state.atoms, &accepted)?;
+        println!("Rebuilt Memvid semantic local index.");
+    }
+
     println!("Synchronized {} lore atoms from Git history", atoms.len());
     Ok(())
 }

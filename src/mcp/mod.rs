@@ -12,6 +12,9 @@ use crate::parser::{detect_scope, ScopeContext};
 
 pub mod transport;
 
+#[cfg(feature = "semantic-search")]
+pub mod semantic;
+
 pub use transport::McpServer;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -294,20 +297,79 @@ impl McpService {
                 .or_insert((record.atom, "accepted_archive".to_string()));
         }
 
-        let mut hits = candidates
-            .into_values()
-            .filter_map(|(atom, source)| {
-                score_memory_hit(
-                    &atom,
-                    &source,
-                    &query_lower,
-                    &query_tokens,
-                    file_path.as_ref(),
-                    scope.as_ref(),
-                    newest_timestamp,
-                )
-            })
-            .collect::<Vec<_>>();
+        let mut hits = Vec::new();
+
+        #[cfg(feature = "semantic-search")]
+        {
+            if semantic::index_exists(workspace.root()) {
+                if let Ok(semantic_results) = semantic::search(workspace.root(), &query, limit.max(5) * 2) {
+                    for (id, base_score, source) in semantic_results {
+                        if let Some((atom, _)) = candidates.get(&id) {
+                            let mut hit = MemorySearchHit {
+                                atom: atom.clone(),
+                                source,
+                                score: base_score * 12.0, // Scale base semantic score
+                                reasons: vec![format!("semantic:{:.2}", base_score)],
+                            };
+
+                            let state_bonus = match atom.state {
+                                AtomState::Accepted => 12.0,
+                                AtomState::Proposed => 8.0,
+                                AtomState::Draft => 4.0,
+                                AtomState::Deprecated => -3.0,
+                            };
+                            hit.score += state_bonus;
+                            hit.reasons.push(format!("state:{:?}", atom.state));
+
+                            if newest_timestamp > 0 && atom.created_unix_seconds > 0 {
+                                let normalized = (atom.created_unix_seconds as f64 / newest_timestamp as f64).min(1.0);
+                                let recency_bonus = normalized * 6.0;
+                                hit.score += recency_bonus;
+                                hit.reasons.push(format!("recency:{:.2}", recency_bonus));
+                            }
+
+                            if let Some(target_path) = file_path.as_ref() {
+                                if atom.path.as_ref() == Some(target_path) {
+                                    hit.score += 10.0;
+                                    hit.reasons.push("path:exact".to_string());
+                                } else if let (Some(atom_path), Some(parent)) = (atom.path.as_ref(), target_path.parent()) {
+                                    if atom_path.starts_with(parent) {
+                                        hit.score += 4.0;
+                                        hit.reasons.push("path:near".to_string());
+                                    }
+                                }
+                            }
+
+                            if let Some(scope_hint) = scope.as_ref() {
+                                if atom.scope.as_deref() == Some(scope_hint.name.as_str()) {
+                                    hit.score += 6.0;
+                                    hit.reasons.push("scope:exact".to_string());
+                                }
+                            }
+
+                            hits.push(hit);
+                        }
+                    }
+                }
+            }
+        }
+
+        if hits.is_empty() {
+            hits = candidates
+                .into_values()
+                .filter_map(|(atom, source)| {
+                    score_memory_hit(
+                        &atom,
+                        &source,
+                        &query_lower,
+                        &query_tokens,
+                        file_path.as_ref(),
+                        scope.as_ref(),
+                        newest_timestamp,
+                    )
+                })
+                .collect::<Vec<_>>();
+        }
 
         hits.sort_by(|left, right| {
             right
