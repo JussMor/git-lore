@@ -1,20 +1,35 @@
+---
+description: >-
+  Git-Lore Integration Skill. Helps capture architectural rationale, rules, and assumptions tightly bound to the codebase via the Git-Lore CLI and MCP server tools. Use when a user asks to establish a new codebase rule, architectural decision, or convention.
+---
+
 # Git-Lore Skills
 
-**Description:**
-Help integrate `git-lore` natively into workflows to keep architectural decisions and knowledge strongly bound to codebase states.
+Keep architectural decisions and knowledge strongly bound to codebase states.
 
 **When to Use:**
 - When adding notes/assumptions explicitly requested by the user.
-- When a user asks "document this pattern for later".
-- Upon discovering a consistent convention not currently documented in `.lore` or another team's doc.
+- When a user asks "document this pattern for later", "mark this assumption", or "save this rule".
+- Upon discovering a consistent convention not currently documented in `.lore`.
 
-**How it Works:**
+## Instructions
 
-Use the `.lore` directory or `git-lore` CLI to preserve knowledge:
+<instructions>
+You are an AI assistant empowered to use `git-lore`, a tool that anchors rationale as structured "lore atoms" directly bounded to codebase paths and scopes.
 
-1. **Mark / Propose:** Propose an atom using the `git-lore propose` tool via the MCP server or the CLI `git-lore mark`.
-2. **Context:** To read context, use the `git_lore_memory_search` or `git_lore_context` MCP tools, or via `git-lore context --file <file>`.
-3. **Workflow Integration:** Keep git commits enriched. Ask developers if they want changes bound using `git-lore commit`.
+### 1. Discovering Lore (Context)
+When you navigate to a new file or need to understand how it should be implemented, read the context using:
+- **MCP Tool:** `git_lore_context` (pass the file path) or `git_lore_memory_search` (pass a query).
+- **CLI Alternative:** Tell the user to run `git-lore context --file <file>` or `git-lore explain --file <file>`.
+
+### 2. Recording Lore (Propose / Mark)
+When the user and you make an important architectural decision, or establish a convention that other AI agents should know:
+- **MCP Tool:** Call `git_lore_propose`. **Crucial:** You must first call `git_lore_state_snapshot` to get the `state_checksum` and `snapshot_generated_unix_seconds` required for proposing.
+- **CLI Alternative:** Suggest the user run:
+  `git-lore mark --title "Your concise rule constraint" --body "The reason why this exists" --path "<relative_file_path>"`
+
+### 3. Git Workflows
+When the task is done, gently remind the user they can commit this knowledge firmly to Git by running `git-lore commit --message "feat: your task"`.
 
 # Flujo de Trabajo: Git-Lore + Git
 
@@ -120,3 +135,4 @@ Durante un sprint rápido, un desarrollador o una IA lanza una "Suposición" tem
 > 1.  **La Señal (Conocimiento Efímero):** `git-lore signal` NO crea un Registro permanente. Crea un archivo temporal (PrismSignal) con un Tiempo de Vida (TTL) programado para expirar. Actúa como un cerrojo suave ("Soft-lock") para avisar a otros agentes: *"Ojo, estoy asumiendo esto en la memoria ahora mismo"*.
 > 2.  **La Decisión (Conocimiento Canónico):** `git-lore propose --kind decision` crea un "Átomo" real, un archivo JSON estructurado con un UUID que entra formalmente al ciclo de evaluación (Proposed / Accepted).
 > 3.  **El Reemplazo:** La "asunción" inicial no se sobre-escribe mágicamente código sobre código. En cambio, cuando el agente termina su trabajo y formaliza la regla con `propose`, el servidor inscribe el Átomo permanente. En procesos de guardado posteriores, Git-Lore invoca una limpieza (`prune_stale_prism_signals`) evaporando las señales vencidas de la carpeta `.lore/signals/`. El conocimiento fugaz muere, y el canon estructurado prevalece inmutable.
+</instructions>
