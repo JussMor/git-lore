@@ -1,5 +1,6 @@
 use git_lore::git;
 use git_lore::lore::{AtomState, LoreAtom, LoreKind, Workspace};
+use git_lore::mcp::McpService;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -71,6 +72,27 @@ struct SetStateInput {
     state: AtomStateArg,
     reason: String,
     actor: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct AtomContextInput {
+    atom_id: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct GitDecisionSummary {
+    commit_hash: String,
+    subject: String,
+    trailer_value: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AtomContextReport {
+    atom_id: String,
+    file_path: Option<String>,
+    scope: Option<String>,
+    constraints: Vec<String>,
+    historical_decisions: Vec<GitDecisionSummary>,
 }
 
 impl From<LoreKindArg> for LoreKind {
@@ -196,6 +218,61 @@ fn set_atom_state(path: Option<String>, input: SetStateInput) -> Result<Workspac
     workspace_snapshot(&workspace)
 }
 
+#[tauri::command]
+fn atom_context(path: Option<String>, input: AtomContextInput) -> Result<AtomContextReport, String> {
+    let workspace = discover_workspace(path)?;
+    let state = workspace.load_state().map_err(|error| error.to_string())?;
+    let atom = state
+        .atoms
+        .iter()
+        .find(|atom| atom.id == input.atom_id)
+        .cloned()
+        .ok_or_else(|| format!("atom {} not found", input.atom_id))?;
+
+    let Some(atom_path) = atom.path.clone() else {
+        return Ok(AtomContextReport {
+            atom_id: atom.id,
+            file_path: None,
+            scope: atom.scope,
+            constraints: Vec::new(),
+            historical_decisions: Vec::new(),
+        });
+    };
+
+    let resolved_path = if atom_path.is_absolute() {
+        atom_path
+    } else {
+        workspace.root().join(atom_path)
+    };
+
+    let service = McpService::new(workspace.root());
+    let snapshot = service
+        .context(&resolved_path, None)
+        .map_err(|error| error.to_string())?;
+
+    let file_path = resolved_path
+        .strip_prefix(workspace.root())
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_else(|_| resolved_path.to_string_lossy().to_string());
+
+    Ok(AtomContextReport {
+        atom_id: atom.id,
+        file_path: Some(file_path),
+        scope: atom.scope,
+        constraints: snapshot.constraints.into_iter().take(8).collect(),
+        historical_decisions: snapshot
+            .historical_decisions
+            .into_iter()
+            .take(6)
+            .map(|decision| GitDecisionSummary {
+                commit_hash: decision.commit_hash,
+                subject: decision.subject,
+                trailer_value: decision.trailer_value,
+            })
+            .collect(),
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -207,7 +284,8 @@ pub fn run() {
             workspace_status,
             validate_workspace,
             mark_atom,
-            set_atom_state
+            set_atom_state,
+            atom_context
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
