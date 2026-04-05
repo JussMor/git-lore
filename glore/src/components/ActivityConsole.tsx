@@ -615,7 +615,7 @@ export function ActivityConsole({
                     </div>
                     <div className="mb-2">
                       <div className="mb-1 text-gray-400">
-                        Validation script (optional)
+                        Validation command (optional)
                       </div>
                       <input
                         className={FIELD_CLASS}

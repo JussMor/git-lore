@@ -4,6 +4,10 @@ This file records completed implementation slices and the next handoff point.
 
 ## 2026-04-05
 
+- Made `git-lore sync` non-destructive for matching active atoms and changed Glore Refresh to reload the full workspace snapshot instead of only status.
+
+- Clarified `validation_script` as a literal shell command, added a guard against narrative text before `/bin/sh` execution, and covered the preflight path with regression tests.
+
 - Added a live workspace change bridge in Glore: the Tauri backend now watches `.lore/active_intent.json`, emits workspace change events, and the React app reloads the graph with a short debounce and node pulse animation.
 
 ## 2026-04-04

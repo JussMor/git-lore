@@ -910,7 +910,7 @@ function App() {
             pushLog("error", "Choose a project path first.");
             break;
           }
-          await refreshStatus(projectPath);
+          await loadWorkspace(projectPath, { animate: true });
           break;
         case "validate":
           await runValidate();
@@ -1083,7 +1083,9 @@ function App() {
               <div className="flex items-center gap-2">
                 <button
                   className="rounded border border-[#3d3d3d] px-2 py-1 text-xs text-gray-200 hover:bg-[#2b2b2b] disabled:opacity-60"
-                  onClick={() => projectPath && refreshStatus(projectPath)}
+                  onClick={() =>
+                    projectPath && loadWorkspace(projectPath, { animate: true })
+                  }
                   disabled={!projectPath || working || loading}
                 >
                   <span className="inline-flex items-center gap-1">

@@ -44,6 +44,7 @@ pub struct ProposalRequest {
     pub title: String,
     pub body: Option<String>,
     pub scope: Option<String>,
+    /// A literal shell command that validates the atom when preflight runs.
     pub validation_script: Option<String>,
 }
 

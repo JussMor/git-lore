@@ -12,6 +12,10 @@ After each completed implementation slice, update this file and append a short n
 
 ## Recently Completed
 
+- Made `git-lore sync` preserve existing active atom state instead of re-promoting matching refs, and made Glore Refresh reload the full workspace snapshot.
+
+- Clarified `validation_script` as a literal shell command, blocked narrative text before execution, and added regression tests for the preflight path.
+
 - Added a live workspace change bridge from the Tauri backend to the Glore graph so `.lore/active_intent.json` updates can reload the view and pulse changed atoms.
 - Polished the Glore atom details inspector with tighter spacing, smaller typography, and a cooler muted panel palette to better match the reference UI.
 - Tightened the Atom Details typography further to an XS density, making titles, metadata, and action labels more concise.

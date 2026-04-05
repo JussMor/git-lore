@@ -173,6 +173,10 @@ impl Workspace {
     pub fn record_atom(&self, atom: LoreAtom) -> Result<()> {
         self.ensure_layout()?;
 
+        if let Some(script) = atom.validation_script.as_deref() {
+            validation::validate_script(script)?;
+        }
+
         if let Some(issue) = sanitize::scan_atoms(std::slice::from_ref(&atom)).into_iter().next() {
             return Err(anyhow::anyhow!(
                 "sensitive content detected in atom {} field {}: {}",
