@@ -4,6 +4,8 @@ This file records completed implementation slices and the next handoff point.
 
 ## 2026-04-05
 
+- Fixed the remote installer so `curl ... | bash -- --features semantic-search` now installs the `git-lore` package explicitly instead of failing on the Glore binary package.
+
 - Made `git-lore sync` non-destructive for matching active atoms and changed Glore Refresh to reload the full workspace snapshot instead of only status.
 
 - Clarified `validation_script` as a literal shell command, added a guard against narrative text before `/bin/sh` execution, and covered the preflight path with regression tests.
