@@ -1,10 +1,13 @@
 use git_lore::git;
 use git_lore::lore::{AtomState, LoreAtom, LoreKind, Workspace};
 use git_lore::mcp::{McpService, ProposalRequest};
+use notify::{recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Clone, Debug, Serialize)]
 struct WorkspaceSnapshot {
@@ -117,6 +120,23 @@ struct CommitDiffReport {
     truncated: bool,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct WorkspaceChangedEvent {
+    root: String,
+    changed_paths: Vec<String>,
+    kind: String,
+}
+
+struct WorkspaceWatcherRegistration {
+    root: PathBuf,
+    _watcher: RecommendedWatcher,
+}
+
+#[derive(Default)]
+struct WorkspaceWatcherState {
+    watcher: Mutex<Option<WorkspaceWatcherRegistration>>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 struct ToolContextInput {
     file_path: String,
@@ -217,6 +237,74 @@ fn truncate_for_preview(value: &str, max_chars: usize) -> (String, bool) {
     )
 }
 
+impl WorkspaceWatcherState {
+    fn watch(&self, app: &AppHandle, workspace: &Workspace) -> Result<String, String> {
+        let root = workspace.root().to_path_buf();
+        let state_path = root.join(".lore").join("active_intent.json");
+
+        {
+            let guard = self
+                .watcher
+                .lock()
+                .map_err(|_| "workspace watcher state is poisoned".to_string())?;
+
+            if guard
+                .as_ref()
+                .map(|registration| registration.root == root)
+                .unwrap_or(false)
+            {
+                return Ok(state_path.to_string_lossy().to_string());
+            }
+        }
+
+        let event_root = root.to_string_lossy().to_string();
+        let app_handle = app.clone();
+
+        let mut watcher = recommended_watcher(move |result: Result<Event, notify::Error>| {
+            let Ok(event) = result else {
+                return;
+            };
+
+            let changed_paths: Vec<String> = event
+                .paths
+                .into_iter()
+                .filter(|path| {
+                    path.file_name().and_then(|name| name.to_str()) == Some("active_intent.json")
+                })
+                .map(|path| path.to_string_lossy().to_string())
+                .collect();
+
+            if changed_paths.is_empty() {
+                return;
+            }
+
+            let payload = WorkspaceChangedEvent {
+                root: event_root.clone(),
+                changed_paths,
+                kind: format!("{:?}", event.kind),
+            };
+
+            let _ = app_handle.emit("lore://workspace-changed", payload);
+        })
+        .map_err(|error| error.to_string())?;
+
+        watcher
+            .watch(&root.join(".lore"), RecursiveMode::Recursive)
+            .map_err(|error| error.to_string())?;
+
+        let mut guard = self
+            .watcher
+            .lock()
+            .map_err(|_| "workspace watcher state is poisoned".to_string())?;
+        *guard = Some(WorkspaceWatcherRegistration {
+            root,
+            _watcher: watcher,
+        });
+
+        Ok(state_path.to_string_lossy().to_string())
+    }
+}
+
 #[tauri::command]
 fn load_workspace(path: Option<String>) -> Result<WorkspaceSnapshot, String> {
     let workspace = discover_workspace(path)?;
@@ -227,6 +315,16 @@ fn load_workspace(path: Option<String>) -> Result<WorkspaceSnapshot, String> {
 fn init_workspace(path: String) -> Result<WorkspaceSnapshot, String> {
     let workspace = Workspace::init(path).map_err(|error| error.to_string())?;
     workspace_snapshot(&workspace)
+}
+
+#[tauri::command]
+fn watch_workspace(
+    app: AppHandle,
+    watcher_state: State<'_, WorkspaceWatcherState>,
+    path: Option<String>,
+) -> Result<String, String> {
+    let workspace = discover_workspace(path)?;
+    watcher_state.watch(&app, &workspace)
 }
 
 #[tauri::command]
@@ -615,11 +713,13 @@ fn tool_propose_with_guard(path: Option<String>, input: ToolProposeInput) -> Res
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(WorkspaceWatcherState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             load_workspace,
             init_workspace,
+            watch_workspace,
             workspace_status,
             validate_workspace,
             mark_atom,

@@ -33,6 +33,11 @@ type CommitDiffReport = {
 
 type AtomStateValue = "draft" | "proposed" | "accepted" | "deprecated";
 
+type TransitionOption = {
+  value: AtomStateValue;
+  label: string;
+};
+
 type Props = {
   selectedAtom: LoreAtomLike | null;
   contextLoading: boolean;
@@ -42,8 +47,8 @@ type Props = {
   diffLoading: boolean;
   diffError: string;
   selectedCommitDiff: CommitDiffReport | null;
-  targetState: AtomStateValue;
-  onTargetStateChange: (value: AtomStateValue) => void;
+  targetState: AtomStateValue | "";
+  onTargetStateChange: (value: AtomStateValue | "") => void;
   stateReason: string;
   onStateReasonChange: (value: string) => void;
   onApplyState: () => void;
@@ -101,6 +106,27 @@ const commitTooltipText = (commit: GitContextCommit) =>
 const stripTrailerPrefix = (value: string) =>
   value.replace(/^\[[^\]]+\]\s*/, "").trim();
 
+const getAllowedTransitions = (currentState: string): TransitionOption[] => {
+  const normalized = currentState.trim().toLowerCase();
+
+  switch (normalized) {
+    case "draft":
+      return [
+        { value: "proposed", label: "proposed" },
+        { value: "deprecated", label: "deprecated" },
+      ];
+    case "proposed":
+      return [
+        { value: "accepted", label: "accepted" },
+        { value: "deprecated", label: "deprecated" },
+      ];
+    case "accepted":
+      return [{ value: "deprecated", label: "deprecated" }];
+    default:
+      return [];
+  }
+};
+
 export function AtomDetailsPanel({
   selectedAtom,
   contextLoading,
@@ -132,6 +158,12 @@ export function AtomDetailsPanel({
   }, [selectedAtom]);
 
   const selectedPath = selectedAtom?.path?.trim() ?? "";
+  const transitionOptions = selectedAtom
+    ? getAllowedTransitions(selectedAtom.state)
+    : [];
+  const selectedTransitionIsAllowed =
+    targetState !== "" &&
+    transitionOptions.some((option) => option.value === targetState);
 
   const handleOpenPath = async () => {
     if (!selectedPath || openFileBusy) {
@@ -351,17 +383,32 @@ export function AtomDetailsPanel({
                   Lifecycle Transition
                 </div>
                 <select
-                  className="mb-2 w-full rounded border border-[#404040] bg-[#1f1f1f] px-2 py-1.5 text-[10px] text-gray-200 outline-none focus:border-[#4fc3f7]"
-                  value={targetState}
+                  className="mb-2 w-full rounded border border-[#404040] bg-[#1f1f1f] px-2 py-1.5 text-[10px] text-gray-200 outline-none focus:border-[#4fc3f7] disabled:cursor-not-allowed disabled:opacity-60"
+                  value={targetState || ""}
+                  disabled={transitionOptions.length === 0}
                   onChange={(event) =>
-                    onTargetStateChange(event.target.value as AtomStateValue)
+                    onTargetStateChange(
+                      event.target.value as AtomStateValue | "",
+                    )
                   }
                 >
-                  <option value="draft">draft</option>
-                  <option value="proposed">proposed</option>
-                  <option value="accepted">accepted</option>
-                  <option value="deprecated">deprecated</option>
+                  <option value="" disabled>
+                    choose transition
+                  </option>
+                  {transitionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
+                {selectedAtom ? (
+                  <div className="mb-2 text-[10px] text-gray-500">
+                    Current state: {selectedAtom.state.trim().toLowerCase()}.{" "}
+                    {transitionOptions.length > 0
+                      ? `Available transitions: ${transitionOptions.map((option) => option.label).join(", ")}.`
+                      : "No lifecycle transitions are available from this state."}
+                  </div>
+                ) : null}
                 <textarea
                   className="mb-2 w-full rounded border border-[#404040] bg-[#1f1f1f] px-2 py-1.5 text-[10px] text-gray-200 outline-none focus:border-[#4fc3f7]"
                   rows={3}
@@ -372,7 +419,7 @@ export function AtomDetailsPanel({
                 <button
                   className="w-full rounded-lg bg-[#0e639c] px-2 py-1.5 text-[10px] font-semibold text-white hover:bg-[#1177bb] disabled:opacity-60"
                   onClick={onApplyState}
-                  disabled={working || loading}
+                  disabled={working || loading || !selectedTransitionIsAllowed}
                 >
                   Apply State
                 </button>

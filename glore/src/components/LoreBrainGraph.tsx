@@ -11,6 +11,7 @@ import {
 type Props = {
   atoms: GraphAtom[];
   selectedAtomId: string | null;
+  recentAtomIds?: string[];
   onSelectAtom: (atomId: string) => void;
 };
 
@@ -99,7 +100,12 @@ const computeFitView = (
   };
 };
 
-export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
+export function LoreBrainGraph({
+  atoms,
+  selectedAtomId,
+  recentAtomIds = [],
+  onSelectAtom,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ width: 1060, height: 620 });
   const [view, setView] = useState<ViewState>({ scale: 1, tx: 0, ty: 0 });
@@ -143,6 +149,11 @@ export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
   const nodeMap = useMemo(
     () => new Map(model.nodes.map((node) => [node.id, node])),
     [model.nodes],
+  );
+
+  const recentAtomIdSet = useMemo(
+    () => new Set(recentAtomIds),
+    [recentAtomIds],
   );
 
   const connectedWithSelection = useMemo(() => {
@@ -250,6 +261,7 @@ export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
             const isSelected = !isScope && selectedAtomId === node.id;
             const isSignal =
               !isScope && node.kind.trim().toLowerCase() === "signal";
+            const isRecent = !isScope && recentAtomIdSet.has(node.id);
             const dimmed =
               !!selectedAtomId &&
               !isSelected &&
@@ -300,7 +312,7 @@ export function LoreBrainGraph({ atoms, selectedAtomId, onSelectAtom }: Props) {
               <g
                 key={node.id}
                 onClick={() => onSelectAtom(node.id)}
-                className="cursor-pointer"
+                className={`cursor-pointer ${isRecent ? "graph-node-pulse" : ""}`}
                 opacity={dimmed ? 0.34 : 1}
               >
                 {isSignal ? (

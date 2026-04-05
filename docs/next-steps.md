@@ -12,6 +12,7 @@ After each completed implementation slice, update this file and append a short n
 
 ## Recently Completed
 
+- Added a live workspace change bridge from the Tauri backend to the Glore graph so `.lore/active_intent.json` updates can reload the view and pulse changed atoms.
 - Polished the Glore atom details inspector with tighter spacing, smaller typography, and a cooler muted panel palette to better match the reference UI.
 - Tightened the Atom Details typography further to an XS density, making titles, metadata, and action labels more concise.
 - Switched the Atom Details panel to the neutral gray app-shell background so it matches the rest of the UI instead of the earlier blue-tinted surface.
@@ -19,6 +20,8 @@ After each completed implementation slice, update this file and append a short n
 - Compactified the Atom Details Git Context rows and moved full lore-ref details into hover tooltips to reduce cut-off content.
 - Stripped bracketed internal IDs from the visible Git Context row text and widened the rail padding so the status dot no longer clips.
 - Reworked the Git Context rail into per-row connector segments so the tree can grow with proper start and finish handling.
+- Made the Atom Details lifecycle transition selector state-aware so it only shows legal targets for the selected atom.
+- Changed the lifecycle transition selector to start blank per atom and require an explicit user choice instead of auto-preselecting the only option.
 - Auto-configured `docs/capabilities-ui.html` to bootstrap from `.test/.lore` via `docs/.test-lore-manifest.json`, with graceful fallback to active-intent-only loading.
 - Added `docs/capabilities-ui.html`, a dedicated UI that uses `.test/.lore` data, separates capabilities into "listar" and "explicar" views, and documents CLI/MCP command usage by phase.
 - Added local `git_lore_memory_search` hybrid ranking, `git_lore_state_transition_preview`, proposal autofill support, PRISM stale-signal hygiene, and structured MCP error payload codes for retry/degradation behavior.

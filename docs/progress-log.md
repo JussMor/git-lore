@@ -2,6 +2,10 @@
 
 This file records completed implementation slices and the next handoff point.
 
+## 2026-04-05
+
+- Added a live workspace change bridge in Glore: the Tauri backend now watches `.lore/active_intent.json`, emits workspace change events, and the React app reloads the graph with a short debounce and node pulse animation.
+
 ## 2026-04-04
 
 - Added the initial Rust CLI scaffold, local `.lore` workspace state, checkpoint persistence, and commit trailer rendering.
@@ -40,3 +44,5 @@ This file records completed implementation slices and the next handoff point.
 - Compactified the Atom Details Git Context rows and moved full lore-ref details into hover tooltips to reduce cut-off content.
 - Stripped bracketed internal IDs from the visible Git Context row text and widened the rail padding so the status dot no longer clips.
 - Reworked the Git Context rail into per-row connector segments so the tree can grow with proper start and finish handling.
+- Made the Atom Details lifecycle transition selector state-aware so it only shows legal targets for the selected atom.
+- Changed the lifecycle transition selector to start blank per atom and require an explicit user choice instead of auto-preselecting the only option.

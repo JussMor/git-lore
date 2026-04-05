@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Folder, Layers, RefreshCw, ShieldCheck, Terminal } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { ActivityConsole } from "./components/ActivityConsole";
 import { AtomDetailsPanel } from "./components/AtomDetailsPanel";
@@ -24,6 +25,17 @@ export interface LoreAtom {
 type WorkspaceSnapshot = {
   root: string;
   atoms: LoreAtom[];
+};
+
+type WorkspaceChangedEvent = {
+  root: string;
+  changed_paths: string[];
+  kind: string;
+};
+
+type LoadWorkspaceOptions = {
+  animate?: boolean;
+  preferredSelectionId?: string | null;
 };
 
 type ContradictionSummary = {
@@ -156,6 +168,36 @@ const tokenizeCommand = (input: string) =>
     token.replace(/^['"]|['"]$/g, ""),
   );
 
+const detectChangedAtomIds = (previous: LoreAtom[], next: LoreAtom[]) => {
+  const changed = new Set<string>();
+  const previousById = new Map(previous.map((atom) => [atom.id, atom]));
+  const nextById = new Map(next.map((atom) => [atom.id, atom]));
+
+  for (const [id, atom] of nextById.entries()) {
+    const prior = previousById.get(id);
+    if (
+      !prior ||
+      prior.kind !== atom.kind ||
+      prior.state !== atom.state ||
+      prior.title !== atom.title ||
+      prior.body !== atom.body ||
+      prior.scope !== atom.scope ||
+      prior.path !== atom.path ||
+      prior.validation_script !== atom.validation_script
+    ) {
+      changed.add(id);
+    }
+  }
+
+  for (const id of previousById.keys()) {
+    if (!nextById.has(id)) {
+      changed.add(id);
+    }
+  }
+
+  return [...changed];
+};
+
 function App() {
   const [atoms, setAtoms] = useState<LoreAtom[]>([]);
   const [root, setRoot] = useState<string>("");
@@ -182,8 +224,8 @@ function App() {
   >("decision");
 
   const [targetState, setTargetState] = useState<
-    "draft" | "proposed" | "accepted" | "deprecated"
-  >("accepted");
+    "draft" | "proposed" | "accepted" | "deprecated" | ""
+  >("");
   const [stateReason, setStateReason] = useState("");
   const [stateFilters, setStateFilters] = useState<StateFilterMap>({
     accepted: true,
@@ -206,6 +248,27 @@ function App() {
     useState<CommitDiffReport | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string>("");
+  const [recentAtomIds, setRecentAtomIds] = useState<string[]>([]);
+
+  const atomsRef = useRef<LoreAtom[]>([]);
+  const loadWorkspaceRef = useRef<
+    (path: string, options?: LoadWorkspaceOptions) => Promise<void>
+  >(async () => {});
+  const workspacePulseTimerRef = useRef<number | null>(null);
+  const workspaceWriteCooldownRef = useRef(0);
+
+  useEffect(() => {
+    atomsRef.current = atoms;
+  }, [atoms]);
+
+  useEffect(
+    () => () => {
+      if (workspacePulseTimerRef.current !== null) {
+        window.clearTimeout(workspacePulseTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const filteredAtoms = useMemo(
     () =>
@@ -217,6 +280,10 @@ function App() {
   );
 
   const selectedAtom = atoms.find((atom) => atom.id === selectedAtomId) ?? null;
+
+  useEffect(() => {
+    setTargetState("");
+  }, [selectedAtomId]);
 
   const gitContextCommits = useMemo<GitContextCommit[]>(() => {
     if (!atomContext) {
@@ -400,11 +467,67 @@ function App() {
     );
   };
 
+  const scheduleRecentAtomPulse = (atomIds: string[]) => {
+    if (atomIds.length === 0) {
+      return;
+    }
+
+    setRecentAtomIds((current) =>
+      Array.from(new Set([...current, ...atomIds])),
+    );
+
+    if (workspacePulseTimerRef.current !== null) {
+      window.clearTimeout(workspacePulseTimerRef.current);
+    }
+
+    workspacePulseTimerRef.current = window.setTimeout(() => {
+      setRecentAtomIds([]);
+      workspacePulseTimerRef.current = null;
+    }, 1600);
+  };
+
+  const commitWorkspaceSnapshot = (
+    snapshot: WorkspaceSnapshot,
+    options: LoadWorkspaceOptions = {},
+  ) => {
+    const previousAtoms = atomsRef.current;
+
+    setRoot(snapshot.root);
+    setAtoms(snapshot.atoms);
+    atomsRef.current = snapshot.atoms;
+    setError("");
+
+    setSelectedAtomId((current) => {
+      const preferredSelectionId = options.preferredSelectionId ?? current;
+      if (
+        preferredSelectionId &&
+        snapshot.atoms.some((atom) => atom.id === preferredSelectionId)
+      ) {
+        return preferredSelectionId;
+      }
+
+      return snapshot.atoms[0]?.id ?? null;
+    });
+
+    if (options.animate) {
+      scheduleRecentAtomPulse(
+        detectChangedAtomIds(previousAtoms, snapshot.atoms),
+      );
+    }
+  };
+
+  const markLocalWorkspaceWrite = () => {
+    workspaceWriteCooldownRef.current = Date.now() + 1200;
+  };
+
   const isMissingLoreError = error
     .toLowerCase()
     .includes("could not find a .lore workspace");
 
-  const loadWorkspace = async (path: string) => {
+  const loadWorkspace = async (
+    path: string,
+    options: LoadWorkspaceOptions = {},
+  ) => {
     setLoading(true);
     setError("");
 
@@ -413,9 +536,17 @@ function App() {
         path,
       });
 
-      setRoot(snapshot.root);
-      setAtoms(snapshot.atoms);
-      setSelectedAtomId(snapshot.atoms[0]?.id ?? null);
+      commitWorkspaceSnapshot(snapshot, options);
+      loadWorkspaceRef.current = loadWorkspace;
+      try {
+        await invoke<string>("watch_workspace", {
+          path: snapshot.root,
+        });
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        pushLog("error", `Workspace watcher failed: ${message}`);
+      }
+
       pushLog("success", `Loaded workspace at ${snapshot.root}`);
       await refreshStatus(path, true);
     } catch (cause) {
@@ -479,12 +610,20 @@ function App() {
 
     setWorking(true);
     try {
+      markLocalWorkspaceWrite();
       const snapshot = await invoke<WorkspaceSnapshot>("init_workspace", {
         path: projectPath,
       });
-      setRoot(snapshot.root);
-      setAtoms(snapshot.atoms);
-      setSelectedAtomId(snapshot.atoms[0]?.id ?? null);
+      commitWorkspaceSnapshot(snapshot);
+      loadWorkspaceRef.current = loadWorkspace;
+      try {
+        await invoke<string>("watch_workspace", {
+          path: snapshot.root,
+        });
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        pushLog("error", `Workspace watcher failed: ${message}`);
+      }
       setError("");
       pushLog("success", `Initialized .lore workspace at ${snapshot.root}`);
       await refreshStatus(projectPath, true);
@@ -517,13 +656,15 @@ function App() {
 
     setWorking(true);
     try {
+      markLocalWorkspaceWrite();
       const snapshot = await invoke<WorkspaceSnapshot>("mark_atom", {
         path: projectPath,
         input: payload,
       });
-      setRoot(snapshot.root);
-      setAtoms(snapshot.atoms);
-      setSelectedAtomId(snapshot.atoms[0]?.id ?? null);
+      commitWorkspaceSnapshot(snapshot, {
+        preferredSelectionId:
+          snapshot.atoms[snapshot.atoms.length - 1]?.id ?? null,
+      });
       setNewAtomTitle("");
       setNewAtomBody("");
       setNewAtomScope("");
@@ -545,6 +686,11 @@ function App() {
       return;
     }
 
+    if (!targetState) {
+      pushLog("error", "Choose a lifecycle transition first.");
+      return;
+    }
+
     if (!stateReason.trim()) {
       pushLog("error", "State transition reason is required.");
       return;
@@ -558,12 +704,14 @@ function App() {
 
     setWorking(true);
     try {
+      markLocalWorkspaceWrite();
       const snapshot = await invoke<WorkspaceSnapshot>("set_atom_state", {
         path: projectPath,
         input: payload,
       });
-      setRoot(snapshot.root);
-      setAtoms(snapshot.atoms);
+      commitWorkspaceSnapshot(snapshot, {
+        preferredSelectionId: selectedAtom.id,
+      });
       setStateReason("");
       pushLog(
         "success",
@@ -635,6 +783,62 @@ function App() {
     void loadWorkspace(projectPath);
   }, []);
 
+  useEffect(() => {
+    loadWorkspaceRef.current = loadWorkspace;
+  }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (!projectPath) {
+      return;
+    }
+
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    let debounceTimer: number | null = null;
+
+    void listen<WorkspaceChangedEvent>("lore://workspace-changed", (event) => {
+      if (event.payload.root !== projectPath) {
+        return;
+      }
+
+      if (Date.now() < workspaceWriteCooldownRef.current) {
+        return;
+      }
+
+      if (debounceTimer !== null) {
+        window.clearTimeout(debounceTimer);
+      }
+
+      debounceTimer = window.setTimeout(() => {
+        debounceTimer = null;
+        pushLog("info", "Workspace updated externally; reloading graph.");
+        void loadWorkspaceRef.current(projectPath, { animate: true });
+      }, 180);
+    })
+      .then((stopListening) => {
+        if (cancelled) {
+          stopListening();
+          return;
+        }
+
+        unlisten = stopListening;
+      })
+      .catch((cause) => {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        pushLog("error", `Workspace listener failed: ${message}`);
+      });
+
+    return () => {
+      cancelled = true;
+      if (debounceTimer !== null) {
+        window.clearTimeout(debounceTimer);
+      }
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [projectPath]);
+
   const createSignalFromCommand = async (title: string) => {
     if (!projectPath) {
       pushLog("error", "Choose a project path first.");
@@ -646,14 +850,16 @@ function App() {
       kind: "signal",
     };
 
+    markLocalWorkspaceWrite();
     const snapshot = await invoke<WorkspaceSnapshot>("mark_atom", {
       path: projectPath,
       input: payload,
     });
 
-    setRoot(snapshot.root);
-    setAtoms(snapshot.atoms);
-    setSelectedAtomId(snapshot.atoms[0]?.id ?? null);
+    commitWorkspaceSnapshot(snapshot, {
+      preferredSelectionId:
+        snapshot.atoms[snapshot.atoms.length - 1]?.id ?? null,
+    });
     pushLog("success", `Created signal atom: ${title.trim()}`);
     await refreshStatus(projectPath, true);
   };
@@ -672,6 +878,7 @@ function App() {
       return;
     }
 
+    markLocalWorkspaceWrite();
     const snapshot = await invoke<WorkspaceSnapshot>("set_atom_state", {
       path: projectPath,
       input: {
@@ -681,8 +888,9 @@ function App() {
       } satisfies SetStateInput,
     });
 
-    setRoot(snapshot.root);
-    setAtoms(snapshot.atoms);
+    commitWorkspaceSnapshot(snapshot, {
+      preferredSelectionId: selectedAtom.id,
+    });
     pushLog("success", `Transitioned atom to ${nextState}`);
     await refreshStatus(projectPath, true);
   };
@@ -990,6 +1198,7 @@ function App() {
             <LoreBrainGraph
               atoms={filteredAtoms}
               selectedAtomId={selectedAtomId}
+              recentAtomIds={recentAtomIds}
               onSelectAtom={setSelectedAtomId}
             />
           </div>
