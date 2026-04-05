@@ -26,166 +26,226 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Initialize a new Git-Lore workspace
     Init(InitArgs),
+    /// Create a new structured Lore Atom
     Mark(MarkArgs),
+    /// Display the status of the local workspace
     Status(StatusArgs),
+    /// Freeze a cryptographic snapshot of the current lore state
     Checkpoint(CheckpointArgs),
+    /// Integrate lore directly into Git commit trailers
     Commit(CommitArgs),
+    /// Emit ephemeral PRISM signals (soft-locks)
     Signal(SignalArgs),
+    /// Fetch active lore constraints and history for a file
     Context(ContextArgs),
+    /// Propose a new Lore Atom
     Propose(ProposeArgs),
+    /// Spawn the Model Context Protocol (MCP) server
     Mcp(McpArgs),
+    /// Explain the rationale of code based on bordered lore
     Explain(ExplainArgs),
+    /// Run CI logic checks over the workspace vs canon Lore
     Validate(ValidateArgs),
+    /// Synchronize the hot-workspace with cold-storage
     Sync(SyncArgs),
+    /// Strap Git-Lore into local Git hooks
     Install(InstallArgs),
+    /// The underlying reconciliator invoked automatically by Git
     Merge(MergeArgs),
+    /// Alter the lifecycle state of an existing Lore Atom
     SetState(SetStateArgs),
 }
 
 #[derive(Args, Debug)]
 struct InitArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
 }
 
 #[derive(Args, Debug)]
 struct MarkArgs {
+    /// The brief identifier or name of the rule
     #[arg(long)]
     title: String,
+    /// Explanatory text that provides context (the "Why")
     #[arg(long)]
     body: Option<String>,
+    /// The scope boundary, like a function name or class
     #[arg(long)]
     scope: Option<String>,
+    /// The target directory or file this rule binds to
     #[arg(long)]
     path: Option<PathBuf>,
+    /// An optional automation script/regex for validators
     #[arg(long = "validation-script")]
     validation_script: Option<String>,
+    /// The typology of the lore
     #[arg(long, value_enum, default_value = "decision")]
     kind: LoreKindArg,
 }
 
 #[derive(Args, Debug)]
 struct StatusArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
 }
 
 #[derive(Args, Debug)]
 struct CheckpointArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
+    /// Optional message outlining the checkpoint reason
     #[arg(long)]
     message: Option<String>,
 }
 
 #[derive(Args, Debug)]
 struct CommitArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
+    /// Your commit message subject
     #[arg(long)]
     message: String,
+    /// Allow committing even if no files changed (lore changes only)
     #[arg(long, default_value_t = true)]
     allow_empty: bool,
 }
 
 #[derive(Args, Debug)]
 struct SignalArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     workspace: PathBuf,
+    /// Identifier for the active AI session (auto-generated if missing)
     #[arg(long)]
     session_id: Option<String>,
+    /// The name/identity of the emitting agent
     #[arg(long)]
     agent: Option<String>,
+    /// Target code scope
     #[arg(long)]
     scope: Option<String>,
+    /// The affected file(s) or directories globs
     #[arg(long = "path", value_name = "GLOB")]
     paths: Vec<String>,
+    /// The temporary assumptions running in memory
     #[arg(long = "assumption")]
     assumptions: Vec<String>,
+    /// A tentative brief goal or decision
     #[arg(long)]
     decision: Option<String>,
 }
 
 #[derive(Args, Debug)]
 struct ContextArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
+    /// The target script/file
     #[arg(long)]
     file: PathBuf,
+    /// Specific line number for tree-sitter drilling
     #[arg(long)]
     cursor_line: Option<usize>,
 }
 
 #[derive(Args, Debug)]
 struct ProposeArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
+    /// The target script/file
     #[arg(long)]
     file: PathBuf,
+    /// The headline of the new rule
     #[arg(long)]
     title: String,
+    /// The context and reasoning body
     #[arg(long)]
     body: Option<String>,
+    /// An optional validation script or regex
     #[arg(long = "validation-script")]
     validation_script: Option<String>,
+    /// Targeted line number
     #[arg(long)]
     cursor_line: Option<usize>,
+    /// Type of the proposed element
     #[arg(long, value_enum, default_value = "decision")]
     kind: LoreKindArg,
 }
 
 #[derive(Args, Debug)]
 struct McpArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
 }
 
 #[derive(Args, Debug)]
 struct ExplainArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
+    /// The target file
     #[arg(long)]
     file: PathBuf,
+    /// Specific line number for tree-sitter drilling
     #[arg(long)]
     cursor_line: Option<usize>,
 }
 
 #[derive(Args, Debug)]
 struct ValidateArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
 }
 
 #[derive(Args, Debug)]
 struct SyncArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
 }
 
 #[derive(Args, Debug)]
 struct InstallArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
 }
 
 #[derive(Args, Debug)]
 struct MergeArgs {
+    /// Base commit/lore state
     base: PathBuf,
+    /// Current commit/lore state
     current: PathBuf,
+    /// Other branch commit/lore state
     other: PathBuf,
 }
 
 #[derive(Args, Debug)]
 struct SetStateArgs {
+    /// Workspace path
     #[arg(default_value = ".")]
     path: PathBuf,
+    /// The ID of the atom to update
     #[arg(long = "atom-id")]
     atom_id: String,
+    /// The new state for the atom
     #[arg(long, value_enum)]
     state: AtomStateArg,
+    /// The reason for changing the state
     #[arg(long)]
     reason: String,
+    /// The actor making the change
     #[arg(long)]
     actor: Option<String>,
 }
