@@ -1,6 +1,10 @@
-# Git-Lore
+# Git-Lore: Synchronized Context for AI & Human Engineers
 
-Git-Lore is a local-first Rust tool for capturing rationale as structured lore atoms and persisting that intent into Git-oriented workflows.
+**The Problem:** In fast-paced, asynchronous, and AI-assisted development environments, the _"why"_ behind code constantly gets lost. Teammates submit PRs on different schedules, and LLM code-assistants jump into files completely blind to the larger architectural constraints or domain assumptions. Without this context, agents hallucinate, humans repeat past mistakes, and architectural drift destroys codebases.
+
+**The Solution:** Git-Lore creates a powerful synchronous collaboration layer between human developers and Large Language Models (LLMs). By anchoring rationale as deterministic, structured "Lore Atoms" directly bounded to your codebase paths and scopes, it ensures that every human or AI agent (via the Model Context Protocol - MCP) has instant, real-time access to the exact rules, assumptions, and decisions of the code they are modifying.
+
+Git-Lore is a local-first Rust CLI and MCP Server for capturing knowledge and persisting that intent directly into Git-oriented workflows.
 
 See [docs/next-steps.md](docs/next-steps.md) for the current implementation order and [.github/copilot-instructions.md](.github/copilot-instructions.md) for the workspace guidance used by Copilot.
 See [docs/compliance-matrix.md](docs/compliance-matrix.md) for what is implemented versus still pending from the unified specification.
