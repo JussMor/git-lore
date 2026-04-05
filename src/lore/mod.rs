@@ -285,6 +285,9 @@ impl Workspace {
         let previous_state = atom.state.clone();
         let evaluation = evaluate_state_transition(previous_state.clone(), target_state.clone());
         if !evaluation.allowed {
+            if evaluation.code == "state_noop" {
+                return Ok(atom.clone());
+            }
             bail!(
                 "state transition rejected [{}]: {}",
                 evaluation.code,

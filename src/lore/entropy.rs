@@ -157,7 +157,9 @@ fn locate_contradictions(atoms: &[LoreAtom]) -> Vec<Contradiction> {
     let mut grouped: BTreeMap<String, Vec<LoreAtom>> = BTreeMap::new();
 
     for atom in atoms {
-        grouped.entry(location_key(atom)).or_default().push(atom.clone());
+        if atom.state != AtomState::Deprecated {
+            grouped.entry(location_key(atom)).or_default().push(atom.clone());
+        }
     }
 
     let mut contradictions = Vec::new();
@@ -167,32 +169,12 @@ fn locate_contradictions(atoms: &[LoreAtom]) -> Vec<Contradiction> {
             continue;
         }
 
-        if let Some(contradiction) = dependency_contradiction(&key, &group) {
-            contradictions.push(contradiction);
-        }
-
         if let Some(contradiction) = type_contradiction(&key, &group) {
             contradictions.push(contradiction);
         }
     }
 
     contradictions
-}
-
-fn dependency_contradiction(key: &str, atoms: &[LoreAtom]) -> Option<Contradiction> {
-    let has_deprecated = atoms.iter().any(|atom| atom.state == AtomState::Deprecated);
-    let has_active = atoms.iter().any(|atom| atom.state != AtomState::Deprecated);
-
-    if has_deprecated && has_active {
-        Some(Contradiction {
-            key: key.to_string(),
-            kind: MergeConflictKind::DependencyConflict,
-            message: format!("Dependency conflict at {key}: an atom was deprecated while another remained active"),
-            atoms: atoms.to_vec(),
-        })
-    } else {
-        None
-    }
 }
 
 fn type_contradiction(key: &str, atoms: &[LoreAtom]) -> Option<Contradiction> {
