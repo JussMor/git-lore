@@ -5,6 +5,24 @@ Git-Lore is a local-first Rust tool for capturing rationale as structured lore a
 See [docs/next-steps.md](docs/next-steps.md) for the current implementation order and [.github/copilot-instructions.md](.github/copilot-instructions.md) for the workspace guidance used by Copilot.
 See [docs/compliance-matrix.md](docs/compliance-matrix.md) for what is implemented versus still pending from the unified specification.
 
+## Installation
+
+### A. Install from Crates.io (Recommended)
+
+If you have Rust and Cargo installed, simply run:
+
+```bash
+cargo install git-lore
+```
+
+### B. One-Liner Script (macOS / Linux)
+
+Run this curl command in your terminal to automatically download and install `git-lore` directly from the main repository (requires Cargo installed):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JussMor/git-lore/main/install.sh | bash
+```
+
 ## Current slice
 
 - Rust CLI scaffold
