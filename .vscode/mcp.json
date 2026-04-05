@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "git-lore": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/target/debug/git-lore",
+      "args": ["mcp", ".test"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}

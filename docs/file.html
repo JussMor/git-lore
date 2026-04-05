@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Árbol de Decisión: Git + Git-Lore</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            line-height: 1.6;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .tree-container {
+            max-width: 900px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #58a6ff;
+            margin-bottom: 40px;
+        }
+        .node {
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .node-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #79c0ff;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .flow {
+            display: flex;
+            align-items: stretch;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .step {
+            flex: 1;
+            background: #21262d;
+            border-left: 4px solid #8b949e;
+            padding: 12px;
+            border-radius: 4px;
+        }
+        .step.mcp { border-left-color: #a371f7; }
+        .step.lore { border-left-color: #3fb950; }
+        .step.git { border-left-color: #f78166; }
+        
+        .tag {
+            display: inline-block;
+            font-size: 0.8em;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        .tag-git { background: #f7816622; color: #f78166; border: 1px solid #f78166; }
+        .tag-lore { background: #3fb95022; color: #3fb950; border: 1px solid #3fb950; }
+        .tag-mcp { background: #a371f722; color: #a371f7; border: 1px solid #a371f7; }
+        
+        .benefit {
+            background: rgba(46, 160, 67, 0.1);
+            color: #8ddb8c;
+            padding: 12px;
+            border-radius: 6px;
+            font-style: italic;
+            margin-top: 10px;
+        }
+        .question {
+            text-align: center;
+            font-size: 1.3em;
+            color: #d2a8ff;
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="tree-container">
+    <h1>Flujo de Trabajo: Git-Lore + Git</h1>
+    
+    <div class="question">¿En qué etapa de desarrollo te encuentras?</div>
+
+    <!-- Escenario 1 -->
+    <div class="node">
+        <div class="node-title">1. Modificando código críptico o legado</div>
+        <p>Necesitas arreglar un bug o extender un módulo, pero el código es confuso y no sabes qué romperás si lo cambias.</p>
+        
+        <div class="flow">
+            <div class="step git">
+                <span class="tag tag-git">1. Git</span>
+                Crear rama: <code>git checkout -b fix/module</code>
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">2. Git-Lore</span>
+                Obtener reglas: <code>git-lore context --file module.rs</code>
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> Resuelve la paradoja de "Chesterton's Fence". Antes de borrar o cambiar código, el sistema te expone <em>por qué</em> se hizo (las decisiones históricas que enmarcan ese archivo), evitantando que re-introduzcas bugs antiguos.
+        </div>
+    </div>
+
+    <!-- Escenario 2 -->
+    <div class="node">
+        <div class="node-title">2. Tomando decisiones arquitectónicas clave</div>
+        <p>Estás liderando un nuevo feature y has decidido usar un patrón de diseño o herramienta específica para este módulo.</p>
+        
+        <div class="flow">
+            <div class="step git">
+                <span class="tag tag-git">1. Git</span>
+                Programar la lógica principal y hacer <code>git add .</code>
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">2. Git-Lore</span>
+                Marcar: <code>git-lore mark --kind decision --title "Usar Patrón Builder..."</code>
+            </div>
+            <div class="step git">
+                <span class="tag tag-git">3. Integración</span>
+                Confirmar: <code>git-lore commit -m "feat: xyz"</code>
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> Al usar <code>git-lore commit</code>, el contexto no solo se queda local, sino que se inyecta como un <em>Git Trailer</em> en el historial puro de Git. Cualquiera (incluso sin tener git-lore) puede ver en <code>git log</code> la traza de la decisión junto al código que la implementó.
+        </div>
+    </div>
+
+    <!-- Escenario 3 -->
+    <div class="node">
+        <div class="node-title">3. Delegando código complejo a una IA (Copilot, Agentes)</div>
+        <p>Le estás pidiendo a un Agente IA que genere un refactor masivo o construya un nuevo servicio desde tu editor (VS Code).</p>
+        
+        <div class="flow">
+            <div class="step mcp">
+                <span class="tag tag-mcp">1. MCP Server</span>
+                La IA pide contexto silenciosamente: <code>git_lore_context(scope)</code>
+            </div>
+            <div class="step git">
+                <span class="tag tag-git">2. Desarrollo</span>
+                La IA genera código respetando las restricciones inyectadas.
+            </div>
+            <div class="step mcp">
+                <span class="tag tag-mcp">3. Evolución</span>
+                La IA sugiere reglas: <code>git_lore_propose(...)</code>
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> Alimenta automáticamente a la IA (Zero-Shot compliance). Previene que el Agente alucine patrones equivocados o traiga dependencias prohibidas. La IA "nace" conociendo cómo funciona este equipo o proyecto.
+        </div>
+    </div>
+
+    <!-- Escenario 4 -->
+    <div class="node">
+        <div class="node-title">4. Revisión de un Pull Request</div>
+        <p>Un colega sube su código para que lo apruebes y se funda con la rama principal.</p>
+        
+        <div class="flow">
+            <div class="step git">
+                <span class="tag tag-git">1. Git / CI</span>
+                Se levanta la Pull Request en GitHub/GitLab.
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">2. Git-Lore</span>
+                CI verifica o el humano ejecuta <code>git-lore validate</code>.
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> Transforma las opiniones subjetivas en revisiones objetivas. El validador (o el revisor) puede chequear si el código en revisión rompe alguna regla que fue previamente "Acordada y Aceptada" en el lore del directorio afectado.
+        </div>
+    </div>
+
+    <!-- Escenario 5 -->
+    <div class="node">
+        <div class="node-title">5. Explorando la Memoria del Proyecto (Discovery)</div>
+        <p>No recuerdas por qué se tomó una decisión hace meses, o le pides a una IA que investigue el proyecto antes de proponer código nuevo.</p>
+        
+        <div class="flow">
+            <div class="step mcp">
+                <span class="tag tag-mcp">1. MCP Server</span>
+                La IA busca intenciones difusas: <code>git_lore_memory_search("auth architecture")</code>
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">2. Git-Lore</span>
+                Obtener justificación detallada: <code>git-lore explain --file src/auth.rs</code>
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> Democratiza el conocimiento histórico. A través del buscador léxico y semántico del MCP, puedes encontrar conocimiento por "intención" y "recencia", en lugar de buscar a ciegas en Slack o Jira.
+        </div>
+    </div>
+
+    <!-- Escenario 6 -->
+    <div class="node">
+        <div class="node-title">6. Evolución del Conocimiento (Estado y Ciclo de Vida)</div>
+        <p>El código cambia, y las reglas también deben hacerlo. Una convención propuesta por IA necesita ser aceptada, o una regla antigua queda obsoleta.</p>
+        
+        <div class="flow">
+            <div class="step mcp">
+                <span class="tag tag-mcp">1. MCP Server</span>
+                La IA sugiere cambios: <code>git_lore_propose(target_state="Proposed")</code>
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">2. Git-Lore</span>
+                El humano formaliza: <code>git-lore set-state --state accepted</code>
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">3. Git-Lore</span>
+                Las reglas viejas se retiran: <code>git-lore set-state --state deprecated</code>
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> El canon (lore) nunca es inmutable y no se convierte en una Wiki zombie. Pasa por estados <code>Draft -> Proposed -> Accepted -> Deprecated</code>, dándole al equipo y agentes control explícito sobre la validez del conocimiento sobre el tiempo.
+        </div>
+    </div>
+
+    <!-- Escenario 7 -->
+    <div class="node">
+        <div class="node-title">7. Flujos Activos Autoriales (Signals & Preflight)</div>
+        <p>Agentes IA autónomos necesitan verificar la seguridad de la memoria y alertar al equipo de sus intenciones transitorias antes de destruir estados del repositorio accidentalmente.</p>
+        
+        <div class="flow">
+            <div class="step lore">
+                <span class="tag tag-lore">1. Git-Lore</span>
+                Crear instantánea segura: <code>git-lore checkpoint / git-lore status</code>
+            </div>
+            <div class="step mcp">
+                <span class="tag tag-mcp">2. MCP Server</span>
+                Validaciones de estado: <code>git_lore_memory_preflight("commit")</code>
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">3. Git-Lore</span>
+                Agentes emiten eventos cortos: <code>git-lore signal --agent "Codegen"</code>
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> Permite la colaboración segura (Safe Writes) con Inteligencia Artificial. Con verificaciones previas como <code>transition_preview</code> y <code>preflight</code>, se evita la sobrescritura y entropía donde la IA accidentalmente contradiga decisiones base de otras ramas.
+        </div>
+    </div>
+
+    <!-- Escenario 8 -->
+    <div class="node">
+        <div class="node-title">8. Congelando el Conocimiento (Checkpoints)</div>
+        <p>Estás a punto de hacer un refactor masivo de reglas de negocio o estás orquestando múltiples agentes de IA simultáneos. Necesitas asegurar un punto de restauración seguro de las intenciones de tu equipo.</p>
+        
+        <div class="flow">
+            <div class="step lore">
+                <span class="tag tag-lore">1. Git-Lore</span>
+                Congelar el estado base: <code>git-lore checkpoint --message "Pre-refactor de auth"</code>
+            </div>
+            <div class="step mcp">
+                <span class="tag tag-mcp">2. MCP Server</span>
+                Agentes IA validan checksums: <code>git_lore_state_snapshot()</code>
+            </div>
+            <div class="step git">
+                <span class="tag tag-git">3. Integración</span>
+                Fallo rápido (Fail-fast) preventivo en caso de discrepancias temporales.
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> Resuelve la desalineación de estados o condiciones de carrera entre ramas, humanos y Agentes de IA. Un 'checkpoint' crea una fotografía instantánea del <em>Lore</em>. Si el código muta o un agente propone un cambio basándose en información desactualizada, el archivo bloquea la sobre-escritura (Strict State-First Check).
+        </div>
+    </div>
+
+    <!-- Escenario 9 -->
+    <div class="node">
+        <div class="node-title">9. Fusión y Reconciliación de Conocimiento (Merge)</div>
+        <p>Trabajas en una rama feature donde propusiste nuevas decisiones, mientras que en la rama 'main' otra persona agregó o deprecó otras reglas. Ahora necesitas fusionar ambas ramas sin perder ni contradecir el Lore.</p>
+        
+        <div class="flow">
+            <div class="step git">
+                <span class="tag tag-git">1. Git</span>
+                Comienza la fusión de archivos: <code>git merge feature/branch</code>
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">2. Git-Lore</span>
+                Git dispara el merge driver: <code>git-lore merge &lt;base&gt; &lt;current&gt; &lt;other&gt;</code>
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">3. Git-Lore</span>
+                Reconciliación: deduplica IDs, verifica estados (Ej. "Accepted" vence a "Proposed").
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo ayuda?</strong> Git-Lore se instala como un 'Merge Driver' personalizado (vía <code>git-lore install</code>). A diferencia de fusionar código o JSON manualmente, este previene colisiones semánticas. Si un átomo en 'main' fue marcado como <code>Deprecated</code>, pero en tu rama lo habías actualizado, el algoritmo de reconciliación lo fusionará inteligentemente.
+        </div>
+    </div>
+
+    <!-- Escenario 10 -->
+    <div class="node">
+        <div class="node-title">10. Proposiciones y Señales Contextuales (Propose & Signal)</div>
+        <p>Durante un sprint rápido, un desarrollador o una IA lanza una "Suposición" temporal (Signal) al aire para que la IA que trabaje en el código asociado la tenga en cuenta temporalmente, o "proponga" formalmente (Propose) una nueva convención.</p>
+        
+        <div class="flow">
+            <div class="step lore">
+                <span class="tag tag-lore">1. Git-Lore</span>
+                Crear señal efímera: <code>git-lore signal --assumption "Asumo que la API devuelve XML" --path src/</code>
+            </div>
+            <div class="step mcp">
+                <span class="tag tag-mcp">2. MCP Server</span>
+                Subagentes leen la señal: <code>git_lore_memory_search()</code> expone la suposición fresca.
+            </div>
+            <div class="step lore">
+                <span class="tag tag-lore">3. Git-Lore</span>
+                Validación: <code>git-lore propose --title "API responde JSON" --kind decision</code> reemplaza la suposición.
+            </div>
+        </div>
+        
+        <div class="benefit">
+            <strong>¿Cómo funciona el salto de Señal a Decisión internamente?</strong><br><br>
+            <strong>1. La Señal (Conocimiento Efímero):</strong> <code>git-lore signal</code> NO crea un Registro permanente. Crea un archivo temporal (PrismSignal) con un Tiempo de Vida (TTL) programado para expirar. Actúa como un cerrojo suave ("Soft-lock") para avisar a otros agentes: <em>"Ojo, estoy asumiendo esto en la memoria ahora mismo"</em>.<br><br>
+            <strong>2. La Decisión (Conocimiento Canónico):</strong> <code>git-lore propose --kind decision</code> crea un "Átomo" real, un archivo JSON estructurado con un UUID que entra formalmente al ciclo de evaluación (Proposed / Accepted).<br><br>
+            <strong>3. El Reemplazo:</strong> La "asunción" inicial no se sobre-escribe mágicamente código sobre código. En cambio, cuando el agente termina su trabajo y formaliza la regla con <code>propose</code>, el servidor inscribe el Átomo permanente. En procesos de guardado posteriores, Git-Lore invoca una limpieza (<code>prune_stale_prism_signals</code>) evaporando las señales vencidas de la carpeta <code>.lore/signals/</code>. El conocimiento fugaz muere, y el canon estructurado prevalece inmutable.
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

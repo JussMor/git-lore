@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Git-Lore Workflow Preview</title>
+  <style>
+    :root {
+      --bg-1: #f6f3ea;
+      --bg-2: #e7efe7;
+      --ink: #1e2a2f;
+      --muted: #5d6a6f;
+      --line: #d0d9d3;
+      --card: rgba(255, 255, 255, 0.82);
+      --brand: #0d8b84;
+      --brand-2: #e77b2d;
+      --warn: #c17a00;
+      --block: #b33a3a;
+      --ok: #26794d;
+      --shadow: 0 12px 40px rgba(15, 35, 40, 0.12);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Avenir Next", "Futura", "Trebuchet MS", sans-serif;
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #fff6df 0%, transparent 60%),
+        radial-gradient(900px 450px at 95% -5%, #d9f4ef 0%, transparent 62%),
+        linear-gradient(160deg, var(--bg-1), var(--bg-2));
+      min-height: 100vh;
+    }
+
+    .wrap {
+      width: min(1180px, 94vw);
+      margin: 34px auto 60px;
+    }
+
+    .hero {
+      position: relative;
+      padding: 26px 26px 22px;
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 6px);
+      background: var(--card);
+      backdrop-filter: blur(4px);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      width: 280px;
+      height: 280px;
+      right: -90px;
+      top: -130px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #12a69d, #066f6a);
+      opacity: 0.16;
+    }
+
+    .kicker {
+      display: inline-block;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #24595a;
+      background: #d8f0ec;
+      border: 1px solid #9dd8cf;
+      border-radius: 999px;
+      padding: 7px 10px;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+    }
+
+    .sub {
+      margin: 0;
+      color: var(--muted);
+      max-width: 900px;
+      font-size: 16px;
+    }
+
+    .pillars {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pillars span {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .phase {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      padding: 14px;
+      animation: rise 0.7s ease both;
+    }
+
+    .phase:nth-child(2) { animation-delay: 0.08s; }
+    .phase:nth-child(3) { animation-delay: 0.16s; }
+    .phase:nth-child(4) { animation-delay: 0.24s; }
+    .phase:nth-child(5) { animation-delay: 0.32s; }
+
+    .phase h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 1px solid;
+      margin-bottom: 10px;
+    }
+
+    .tag-a { color: #705100; background: #fff2cc; border-color: #e9c972; }
+    .tag-b { color: #0c5f59; background: #dff4f0; border-color: #98d8cf; }
+    .tag-c { color: #3f4f8f; background: #e6ebff; border-color: #b9c5ff; }
+    .tag-d { color: #7b3f74; background: #f7e5f4; border-color: #e6b9df; }
+    .tag-e { color: #6a3f20; background: #ffe9d9; border-color: #f2b98f; }
+
+    ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .gates {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .gate {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.86);
+      padding: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .gate h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .status-row {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .status {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid;
+    }
+
+    .ok { color: var(--ok); background: #e8f6ee; border-color: #b7dec6; }
+    .warn { color: var(--warn); background: #fff5e4; border-color: #f4d8a5; }
+    .block {
+      color: var(--block);
+      background: #ffebeb;
+      border-color: #efb6b6;
+      animation: pulse 1.4s ease infinite;
+    }
+
+    .flow {
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.86);
+      padding: 14px;
+    }
+
+    .flow h3 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 8px;
+    }
+
+    .step {
+      border: 1px dashed #b7c7bd;
+      border-radius: 12px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #304046;
+      background: #fafdfb;
+    }
+
+    .arrow {
+      text-align: center;
+      color: #8aa098;
+      font-weight: 900;
+      line-height: 1;
+      margin-top: 4px;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.03); }
+    }
+
+    @media (max-width: 1080px) {
+      .grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+      .steps { grid-template-columns: repeat(3, minmax(140px, 1fr)); }
+    }
+
+    @media (max-width: 700px) {
+      .grid, .gates, .steps { grid-template-columns: 1fr; }
+      .hero { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <span class="kicker">Antes de Implementar</span>
+      <h1>Workflow de Git-Lore para equipos con AI</h1>
+      <p class="sub">
+        Vista previa del flujo endurecido: la IA autocompleta mensajes de tools,
+        pero nunca escribe sin estado fresco ni sin pasar preflight.
+      </p>
+      <div class="pillars">
+        <span>State-First obligatorio</span>
+        <span>Preflight-First obligatorio</span>
+        <span>Sync idempotente</span>
+        <span>Transiciones auditables</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="phase">
+        <span class="tag tag-a">Fase A</span>
+        <h2>Contrato y reglas</h2>
+        <ul>
+          <li>Definir gates de edicion y commit</li>
+          <li>Modelo de estados y transiciones validas</li>
+          <li>Politica de autofill por IA</li>
+        </ul>
+      </article>
+
+      <article class="phase">
+        <span class="tag tag-b">Fase B</span>
+        <h2>Capas MCP core</h2>
+        <ul>
+          <li>state_snapshot con TTL</li>
+          <li>memory_preflight con block/warn/info</li>
+          <li>memory_search con ranking local</li>
+        </ul>
+      </article>
+
+      <article class="phase">
+        <span class="tag tag-c">Fase C</span>
+        <h2>Control operacional</h2>
+        <ul>
+          <li>set-state con motivo auditado</li>
+          <li>sync idempotente y dedupe</li>
+          <li>alinear merge driver con capacidades reales</li>
+        </ul>
+      </article>
+
+      <article class="phase">
+        <span class="tag tag-d">Fase D</span>
+        <h2>Flujo estandar</h2>
+        <ul>
+          <li>state_snapshot antes de escritura</li>
+          <li>preflight antes de editar/commit/sync</li>
+          <li>autofill IA con confirmacion opcional</li>
+        </ul>
+      </article>
+
+      <article class="phase">
+        <span class="tag tag-e">Fase E</span>
+        <h2>Calidad y cierre</h2>
+        <ul>
+          <li>tests unitarios e integracion multi-agente</li>
+          <li>pruebas end-to-end en .test</li>
+          <li>actualizacion de docs y matriz de cumplimiento</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="gates">
+      <article class="gate">
+        <h3>Gate 1: Antes de editar</h3>
+        <p>Obligatorio para signal, propose y cualquier accion de escritura.</p>
+        <div class="status-row">
+          <span class="status ok">state_snapshot vigente</span>
+          <span class="status warn">soft-lock PRISM</span>
+          <span class="status block">hard-lock detectado</span>
+        </div>
+      </article>
+
+      <article class="gate">
+        <h3>Gate 2: Antes de commit y sync</h3>
+        <p>Evita deriva de estados, secretos y crecimiento artificial de memoria.</p>
+        <div class="status-row">
+          <span class="status ok">validacion scripts ok</span>
+          <span class="status warn">entropia alta</span>
+          <span class="status block">sync no idempotente</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="flow">
+      <h3>Pipeline objetivo (semi-autonomo)</h3>
+      <div class="steps">
+        <div class="step">1. state_snapshot</div>
+        <div class="step">2. memory_preflight</div>
+        <div class="step">3. signal</div>
+        <div class="step">4. context + memory_search</div>
+        <div class="step">5. propose</div>
+        <div class="step">6. edit</div>
+        <div class="step">7. validate</div>
+        <div class="step">8. checkpoint</div>
+        <div class="step">9. commit</div>
+        <div class="step">10. sync</div>
+      </div>
+      <div class="arrow">Operacion de escritura permitida solo si Gate 1 y Gate 2 estan en verde</div>
+    </section>
+  </main>
+</body>
+</html>

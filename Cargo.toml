@@ -1,0 +1,27 @@
+[package]
+name = "git-lore"
+version = "0.1.1"
+edition = "2021"
+description = "Un sistema basado en Git para documentar restricciones (Lore) a nivel de historial y sistema de archivos, con servidor MCP."
+authors = ["El Equipo de Everfaz"]
+repository = "https://github.com/JussMor/git-lore"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["git", "mcp", "documentation", "cli", "ai"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "=4.5.20", features = ["derive"] }
+tree-sitter = "=0.20.10"
+tree-sitter-rust = "=0.20.4"
+tree-sitter-javascript = "=0.20.0"
+tree-sitter-typescript = "=0.20.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = { version = "1", features = ["derive"] }
+thiserror = "1"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+uuid = { version = "=1.10.0", features = ["serde", "v4"] }
+rmcp = { version = "0.16.0", default-features = false, features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["full"] }

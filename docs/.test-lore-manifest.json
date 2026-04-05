@@ -1,0 +1,13 @@
+{
+  "label": ".test/.lore",
+  "active_intent": "../.test/.lore/active_intent.json",
+  "checkpoints": [
+    "../.test/.lore/checkpoints/caebe52d-ebd2-4e61-a937-8ccad4207669.json"
+  ],
+  "accepted_records": [
+    "../.test/.lore/refs/lore/accepted/5aa14b5c-6199-49b0-a167-5decb2b804cd.json",
+    "../.test/.lore/refs/lore/accepted/775ab104-756b-4631-8093-7ee4e56e2a86.json",
+    "../.test/.lore/refs/lore/accepted/967bec53-415e-4a02-bdd9-51e3a4054c13.json"
+  ],
+  "signals": []
+}
