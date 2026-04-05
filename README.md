@@ -38,6 +38,16 @@ curl -fsSL https://raw.githubusercontent.com/JussMor/git-lore/main/install.sh | 
 }
 ```
 
+### Skill Generator
+
+You can automatically generate an AI integration skill (for GitHub Copilot, Cursor, etc.) to help other developers easily adopt `git-lore` in their daily routines without needing to read all the docs. Simply run:
+
+```bash
+git-lore generate
+```
+
+This will create a `.github/git-lore-skills.md` file designed to be read by LLMs to seamlessly bind architectural decisions and knowledge directly into your codebase state.
+
 ## Current slice
 
 - Rust CLI scaffold

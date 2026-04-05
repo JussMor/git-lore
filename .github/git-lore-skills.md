@@ -1,3 +1,21 @@
+# Git-Lore Skills
+
+**Description:**
+Help integrate `git-lore` natively into workflows to keep architectural decisions and knowledge strongly bound to codebase states.
+
+**When to Use:**
+- When adding notes/assumptions explicitly requested by the user.
+- When a user asks "document this pattern for later".
+- Upon discovering a consistent convention not currently documented in `.lore` or another team's doc.
+
+**How it Works:**
+
+Use the `.lore` directory or `git-lore` CLI to preserve knowledge:
+
+1. **Mark / Propose:** Propose an atom using the `git-lore propose` tool via the MCP server or the CLI `git-lore mark`.
+2. **Context:** To read context, use the `git_lore_memory_search` or `git_lore_context` MCP tools, or via `git-lore context --file <file>`.
+3. **Workflow Integration:** Keep git commits enriched. Ask developers if they want changes bound using `git-lore commit`.
+
 # Flujo de Trabajo: Git-Lore + Git
 
 **¿En qué etapa de desarrollo te encuentras?**
@@ -102,3 +120,4 @@ Durante un sprint rápido, un desarrollador o una IA lanza una "Suposición" tem
 > 1.  **La Señal (Conocimiento Efímero):** `git-lore signal` NO crea un Registro permanente. Crea un archivo temporal (PrismSignal) con un Tiempo de Vida (TTL) programado para expirar. Actúa como un cerrojo suave ("Soft-lock") para avisar a otros agentes: *"Ojo, estoy asumiendo esto en la memoria ahora mismo"*.
 > 2.  **La Decisión (Conocimiento Canónico):** `git-lore propose --kind decision` crea un "Átomo" real, un archivo JSON estructurado con un UUID que entra formalmente al ciclo de evaluación (Proposed / Accepted).
 > 3.  **El Reemplazo:** La "asunción" inicial no se sobre-escribe mágicamente código sobre código. En cambio, cuando el agente termina su trabajo y formaliza la regla con `propose`, el servidor inscribe el Átomo permanente. En procesos de guardado posteriores, Git-Lore invoca una limpieza (`prune_stale_prism_signals`) evaporando las señales vencidas de la carpeta `.lore/signals/`. El conocimiento fugaz muere, y el canon estructurado prevalece inmutable.
+

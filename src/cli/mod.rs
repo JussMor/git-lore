@@ -56,6 +56,15 @@ enum Commands {
     Merge(MergeArgs),
     /// Alter the lifecycle state of an existing Lore Atom
     SetState(SetStateArgs),
+    /// Generates LLM integration instructions/skills (e.g. for GitHub Copilot)
+    Generate(GenerateArgs),
+}
+
+#[derive(Args, Debug)]
+struct GenerateArgs {
+    /// Target file to write integration skill/instruction to
+    #[arg(default_value = ".github/git-lore-skills.md")]
+    output: PathBuf,
 }
 
 #[derive(Args, Debug)]
@@ -285,7 +294,42 @@ pub fn run() -> Result<()> {
         Commands::Install(args) => install(args),
         Commands::Merge(args) => merge(args),
         Commands::SetState(args) => set_state(args),
+        Commands::Generate(args) => generate(args),
     }
+}
+
+fn generate(args: GenerateArgs) -> Result<()> {
+    if let Some(parent) = args.output.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent).with_context(|| format!("failed to create dir: {}", parent.display()))?;
+        }
+    }
+    
+    let content = r#"# Git-Lore Skills
+
+**Description:**
+Help integrate `git-lore` natively into workflows to keep architectural decisions and knowledge strongly bound to codebase states.
+
+**When to Use:**
+- When adding notes/assumptions explicitly requested by the user.
+- When a user asks "document this pattern for later".
+- Upon discovering a consistent convention not currently documented in `.lore` or another team's doc.
+
+**How it Works:**
+
+Use the `.lore` directory or `git-lore` CLI to preserve knowledge:
+
+1. **Mark / Propose:** Propose an atom using the `git-lore propose` tool via the MCP server or the CLI `git-lore mark`.
+2. **Context:** To read context, use the `git_lore_memory_search` or `git_lore_context` MCP tools, or via `git-lore context --file <file>`.
+3. **Workflow Integration:** Keep git commits enriched. Ask developers if they want changes bound using `git-lore commit`.
+
+Please refer to the [workflows](https://github.com/JussMor/git-lore/blob/main/docs/workflows.html) for detailed decision trees.
+"#;
+    let mut file = std::fs::File::create(&args.output).context("failed to create output file")?;
+    file.write_all(content.as_bytes()).context("failed to write content")?;
+    
+    println!("Successfully generated Git-Lore skill at: {}", args.output.display());
+    Ok(())
 }
 
 fn init(args: InitArgs) -> Result<()> {
