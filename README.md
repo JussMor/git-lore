@@ -23,6 +23,21 @@ Run this curl command in your terminal to automatically download and install `gi
 curl -fsSL https://raw.githubusercontent.com/JussMor/git-lore/main/install.sh | bash
 ```
 
+### C. MCP Server Configuration (AI Agents & IDEs)
+
+`git-lore` includes a built-in Model Context Protocol (MCP) server to share context directly with AI tools (like Claude Desktop, Cursor, or VS Code). To enable it, add the following to your MCP configuration file (e.g., `claude_desktop_config.json` or your IDE's MCP settings):
+
+```json
+{
+  "mcpServers": {
+    "git-lore": {
+      "command": "git-lore",
+      "args": ["mcp", "."]
+    }
+  }
+}
+```
+
 ## Current slice
 
 - Rust CLI scaffold
