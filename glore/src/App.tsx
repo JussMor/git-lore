@@ -35,7 +35,6 @@ type WorkspaceChangedEvent = {
 
 type LoadWorkspaceOptions = {
   animate?: boolean;
-  preferredSelectionId?: string | null;
 };
 
 type ContradictionSummary = {
@@ -321,8 +320,8 @@ function App() {
     }
 
     const exists = filteredAtoms.some((atom) => atom.id === selectedAtomId);
-    if (!exists) {
-      setSelectedAtomId(filteredAtoms[0].id);
+    if (!exists && selectedAtomId !== null) {
+      setSelectedAtomId(null);
     }
   }, [filteredAtoms, selectedAtomId]);
 
@@ -497,17 +496,11 @@ function App() {
     atomsRef.current = snapshot.atoms;
     setError("");
 
-    setSelectedAtomId((current) => {
-      const preferredSelectionId = options.preferredSelectionId ?? current;
-      if (
-        preferredSelectionId &&
-        snapshot.atoms.some((atom) => atom.id === preferredSelectionId)
-      ) {
-        return preferredSelectionId;
-      }
-
-      return snapshot.atoms[0]?.id ?? null;
-    });
+    setSelectedAtomId((current) =>
+      current && snapshot.atoms.some((atom) => atom.id === current)
+        ? current
+        : null,
+    );
 
     if (options.animate) {
       scheduleRecentAtomPulse(
@@ -661,10 +654,7 @@ function App() {
         path: projectPath,
         input: payload,
       });
-      commitWorkspaceSnapshot(snapshot, {
-        preferredSelectionId:
-          snapshot.atoms[snapshot.atoms.length - 1]?.id ?? null,
-      });
+      commitWorkspaceSnapshot(snapshot);
       setNewAtomTitle("");
       setNewAtomBody("");
       setNewAtomScope("");
@@ -709,9 +699,7 @@ function App() {
         path: projectPath,
         input: payload,
       });
-      commitWorkspaceSnapshot(snapshot, {
-        preferredSelectionId: selectedAtom.id,
-      });
+      commitWorkspaceSnapshot(snapshot);
       setStateReason("");
       pushLog(
         "success",
@@ -856,10 +844,7 @@ function App() {
       input: payload,
     });
 
-    commitWorkspaceSnapshot(snapshot, {
-      preferredSelectionId:
-        snapshot.atoms[snapshot.atoms.length - 1]?.id ?? null,
-    });
+    commitWorkspaceSnapshot(snapshot);
     pushLog("success", `Created signal atom: ${title.trim()}`);
     await refreshStatus(projectPath, true);
   };
@@ -888,9 +873,7 @@ function App() {
       } satisfies SetStateInput,
     });
 
-    commitWorkspaceSnapshot(snapshot, {
-      preferredSelectionId: selectedAtom.id,
-    });
+    commitWorkspaceSnapshot(snapshot);
     pushLog("success", `Transitioned atom to ${nextState}`);
     await refreshStatus(projectPath, true);
   };
