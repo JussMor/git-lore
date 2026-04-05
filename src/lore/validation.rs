@@ -201,7 +201,7 @@ mod tests {
             AtomState::Proposed,
             "Guard writes".to_string(),
             None,
-            None,
+            Some("sync".to_string()),
             None,
         )
         .with_validation_script(Some(

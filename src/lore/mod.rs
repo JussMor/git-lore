@@ -173,6 +173,26 @@ impl Workspace {
     pub fn record_atom(&self, atom: LoreAtom) -> Result<()> {
         self.ensure_layout()?;
 
+        if atom.kind != LoreKind::Signal {
+            let has_path = atom
+                .path
+                .as_ref()
+                .map(|path| !path.as_os_str().is_empty())
+                .unwrap_or(false);
+            let has_scope = atom
+                .scope
+                .as_deref()
+                .map(str::trim)
+                .map(|scope| !scope.is_empty())
+                .unwrap_or(false);
+
+            if !has_path && !has_scope {
+                bail!(
+                    "non-signal atoms require at least one anchor; provide --path or --scope"
+                );
+            }
+        }
+
         if let Some(script) = atom.validation_script.as_deref() {
             validation::validate_script(script)?;
         }
@@ -551,7 +571,7 @@ mod tests {
             AtomState::Proposed,
             "Use SQLite".to_string(),
             None,
-            None,
+            Some("db".to_string()),
             None,
         );
 
@@ -621,5 +641,26 @@ mod tests {
 
         assert!(!preview.allowed);
         assert_eq!(preview.code, "state_transition_blocked");
+    }
+
+    #[test]
+    fn record_atom_rejects_non_signal_without_path_or_scope() {
+        let temp_root = std::env::temp_dir().join(format!("git-lore-anchor-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_root).unwrap();
+        let workspace = Workspace::init(&temp_root).unwrap();
+
+        let atom = LoreAtom::new(
+            LoreKind::Decision,
+            AtomState::Proposed,
+            "Anchor required".to_string(),
+            None,
+            None,
+            None,
+        );
+
+        let error = workspace.record_atom(atom).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("provide --path or --scope"));
     }
 }

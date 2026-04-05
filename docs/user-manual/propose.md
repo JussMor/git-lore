@@ -12,4 +12,4 @@ Unlike `signal`, this persists the rule to `.lore/atoms/` within the `Proposed` 
 
 ## Options
 
-Similar to `git-lore mark` (needs `title`, `body`, `kind`, `cursor-line`, etc.). When you provide `--validation-script`, pass a literal shell command such as `npm test`, not a natural-language description.
+Similar to `git-lore mark` (needs `title`, `body`, `kind`, `cursor-line`, etc.). When you provide `--validation-script`, pass a literal shell command such as `npm test`, not a natural-language description. For non-`signal` proposals, provide at least one anchor (`--file`/path context or `--scope`).

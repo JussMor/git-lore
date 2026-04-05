@@ -4,6 +4,8 @@ This file records completed implementation slices and the next handoff point.
 
 ## 2026-04-05
 
+- Updated sync to recover full accepted atom metadata from Git notes (including multiple atoms per commit), fallback to commit trailers when note data is missing, and enforced `path`/`scope` anchors for new non-signal atoms to prevent repeated `<no-path>::<no-scope>` conflicts.
+
 - Fixed the remote installer so `curl ... | bash -- --features semantic-search` now installs the `git-lore` package explicitly instead of failing on the Glore binary package.
 
 - Made `git-lore sync` non-destructive for matching active atoms and changed Glore Refresh to reload the full workspace snapshot instead of only status.
