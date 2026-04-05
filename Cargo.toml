@@ -1,6 +1,6 @@
 [package]
 name = "git-lore"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Un sistema basado en Git para documentar restricciones (Lore) a nivel de historial y sistema de archivos, con servidor MCP."
 authors = ["El Equipo de Everfaz"]
