@@ -19,12 +19,22 @@ If you have Rust and Cargo installed, simply run:
 cargo install git-lore
 ```
 
+**Want Semantic Search?** To enable the local AI Memvid vector search module:
+```bash
+cargo install git-lore --features semantic-search
+```
+
 ### B. One-Liner Script (macOS / Linux)
 
 Run this curl command in your terminal to automatically download and install `git-lore` directly from the main repository (requires Cargo installed):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JussMor/git-lore/main/install.sh | bash
+```
+
+To install with Semantic Search enabled via the script:
+```bash
+curl -fsSL https://raw.githubusercontent.com/JussMor/git-lore/main/install.sh | bash -s -- --features semantic-search
 ```
 
 ### C. MCP Server Configuration (AI Agents & IDEs)

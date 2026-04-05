@@ -9,7 +9,7 @@ if ! command -v cargo &> /dev/null; then
 fi
 
 echo "=> Instalando Git-Lore globalmente en tu sistema desde el repositorio remoto..."
-cargo install --git https://github.com/JussMor/git-lore.git
+cargo install --git https://github.com/JussMor/git-lore.git "$@"
 
 echo ""
 echo "✅ Git-Lore instalado con éxito!"
