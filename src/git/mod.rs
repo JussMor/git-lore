@@ -327,10 +327,6 @@ pub fn sync_workspace_from_git_history(
             };
 
             if let Some(existing) = atoms_by_id.get_mut(atom_id) {
-                if existing.state != AtomState::Accepted {
-                    existing.state = AtomState::Accepted;
-                }
-
                 if should_replace_with_candidate(existing, &candidate) {
                     *existing = candidate;
                 }
@@ -659,5 +655,59 @@ mod tests {
         assert_eq!(synced.len(), 1);
         assert_eq!(synced[0].id, duplicate_id);
         assert_eq!(synced[0].title, "Newer duplicate");
+    }
+
+    #[test]
+    fn sync_workspace_preserves_existing_active_state_for_matching_refs() {
+        let root = std::env::temp_dir().join(format!("git-lore-sync-preserve-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+
+        let init_status = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .arg("init")
+            .status()
+            .unwrap();
+        assert!(init_status.success());
+
+        let workspace = Workspace::init(&root).unwrap();
+        let commit_hash = commit_lore_message(&root, "chore: seed lore refs", true).unwrap();
+
+        let ref_atom = LoreAtom {
+            id: "preserve-1".to_string(),
+            kind: LoreKind::Decision,
+            state: AtomState::Accepted,
+            title: "Keep sync stable".to_string(),
+            body: Some("Accepted from git history".to_string()),
+            scope: Some("sync".to_string()),
+            path: Some(PathBuf::from("src/git/mod.rs")),
+            validation_script: None,
+            created_unix_seconds: 10,
+        };
+        write_lore_ref(&root, &ref_atom, &commit_hash).unwrap();
+
+        workspace
+            .set_state(&WorkspaceState {
+                version: 1,
+                atoms: vec![LoreAtom {
+                    id: "preserve-1".to_string(),
+                    kind: LoreKind::Decision,
+                    state: AtomState::Deprecated,
+                    title: "Keep sync stable".to_string(),
+                    body: Some("Resolved locally".to_string()),
+                    scope: Some("sync".to_string()),
+                    path: Some(PathBuf::from("src/git/mod.rs")),
+                    validation_script: None,
+                    created_unix_seconds: 20,
+                }],
+            })
+            .unwrap();
+
+        let synced = sync_workspace_from_git_history(&root, &workspace).unwrap();
+
+        assert_eq!(synced.len(), 1);
+        assert_eq!(synced[0].id, "preserve-1");
+        assert_eq!(synced[0].state, AtomState::Deprecated);
+        assert_eq!(synced[0].body.as_deref(), Some("Resolved locally"));
     }
 }

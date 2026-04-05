@@ -2,6 +2,14 @@
 
 This file records completed implementation slices and the next handoff point.
 
+## 2026-04-05
+
+- Made `git-lore sync` non-destructive for matching active atoms and changed Glore Refresh to reload the full workspace snapshot instead of only status.
+
+- Clarified `validation_script` as a literal shell command, added a guard against narrative text before `/bin/sh` execution, and covered the preflight path with regression tests.
+
+- Added a live workspace change bridge in Glore: the Tauri backend now watches `.lore/active_intent.json`, emits workspace change events, and the React app reloads the graph with a short debounce and node pulse animation.
+
 ## 2026-04-04
 
 - Added the initial Rust CLI scaffold, local `.lore` workspace state, checkpoint persistence, and commit trailer rendering.
@@ -33,3 +41,12 @@ This file records completed implementation slices and the next handoff point.
 - Added explicit `git-lore set-state` transitions with audited reason/actor logging, and introduced PRISM stale-signal hygiene (ignore/prune stale signals in conflict and hard-lock checks).
 - Added `docs/capabilities-ui.html`, a focused capabilities dashboard that can load `.test/.lore`, separates command views into "listar" and "explicar", and exposes all major CLI/MCP capabilities with practical command snippets.
 - Added `docs/.test-lore-manifest.json` and auto-bootstrap logic so `docs/capabilities-ui.html` now self-configures from `.test/.lore` on page load with a fallback loader path.
+- Polished the Glore atom details inspector with tighter spacing, smaller typography, and a cooler muted panel palette to better match the reference UI.
+- Tightened the Atom Details typography further to an XS density, making titles, metadata, and action labels more concise.
+- Switched the Atom Details panel to the neutral gray app-shell background so it matches the rest of the UI instead of the earlier blue-tinted surface.
+- Updated the Atom Details "Open In VS Code" action to open the file alongside its parent folder so VS Code lands in the project context.
+- Compactified the Atom Details Git Context rows and moved full lore-ref details into hover tooltips to reduce cut-off content.
+- Stripped bracketed internal IDs from the visible Git Context row text and widened the rail padding so the status dot no longer clips.
+- Reworked the Git Context rail into per-row connector segments so the tree can grow with proper start and finish handling.
+- Made the Atom Details lifecycle transition selector state-aware so it only shows legal targets for the selected atom.
+- Changed the lifecycle transition selector to start blank per atom and require an explicit user choice instead of auto-preselecting the only option.

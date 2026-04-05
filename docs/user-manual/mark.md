@@ -14,5 +14,5 @@ Creates a new Lore Atom, which is a structured record of a rule, decision, assum
 - `--body <String>`: Explanatory text that provides context (the "Why").
 - `--scope <String>`: The scope boundary, like a function name or class.
 - `--path <PathBuf>`: The target directory or file this rule binds to.
-- `--validation-script <String>`: An optional automation script/regex for validators.
+- `--validation-script <String>`: A literal shell command to run during validation, for example `cargo test -p auth`.
 - `--kind <LoreKindArg>`: The typology of the lore. Allowed values: `decision` (default), `assumption`, `open-question`, `signal`.

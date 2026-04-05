@@ -106,7 +106,7 @@ struct MarkArgs {
     /// The target directory or file this rule binds to
     #[arg(long)]
     path: Option<PathBuf>,
-    /// An optional automation script/regex for validators
+    /// A literal shell command that validates the atom when preflight runs
     #[arg(long = "validation-script")]
     validation_script: Option<String>,
     /// The typology of the lore
@@ -196,7 +196,7 @@ struct ProposeArgs {
     /// The context and reasoning body
     #[arg(long)]
     body: Option<String>,
-    /// An optional validation script or regex
+    /// A literal shell command that validates the atom when preflight runs
     #[arg(long = "validation-script")]
     validation_script: Option<String>,
     /// Targeted line number

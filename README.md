@@ -79,6 +79,9 @@ This will create a `.github/git-lore-skills.md` file designed to be read by LLMs
 - Per-atom validation scripts and gzip-compressed workspace record storage
 - 3-way lore merge reconciliation across base, left, and right states
 - Entropy scoring and contradiction reporting for workspace state and merge outcomes
+- Interactive contradiction resolution via `git-lore resolve`
+- Automated generation of AI integration instructions (`git-lore generate`)
+- Expanded MCP capabilities linking state transition previews, memory safety preflights, and local semantic search over historical lore (when compiled with `semantic-search` feature)
 - Protocol docs for PRISM, refs/lore, MCP, scope detection, merge reconciliation, and entropy
 
 ## Next steps
