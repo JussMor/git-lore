@@ -16,3 +16,5 @@ Creates a new Lore Atom, which is a structured record of a rule, decision, assum
 - `--path <PathBuf>`: The target directory or file this rule binds to.
 - `--validation-script <String>`: A literal shell command to run during validation, for example `cargo test -p auth`.
 - `--kind <LoreKindArg>`: The typology of the lore. Allowed values: `decision` (default), `assumption`, `open-question`, `signal`.
+
+For `decision`, `assumption`, and `open-question`, you must provide at least one location anchor: `--path` or `--scope`.

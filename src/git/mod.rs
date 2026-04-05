@@ -159,7 +159,16 @@ pub fn write_lore_ref(repository_root: impl AsRef<Path>, atom: &LoreAtom, source
         ],
     )?;
 
-    let note = serde_json::to_string_pretty(atom)?;
+    let mut note_atoms = run_git_output(
+        repository_root,
+        &["notes", "--ref=refs/notes/lore", "show", source_commit],
+    )
+    .ok()
+    .map(|note| parse_note_atoms(&note))
+    .unwrap_or_default();
+    note_atoms.insert(atom.id.clone(), atom.clone());
+
+    let note = serde_json::to_string_pretty(&note_atoms)?;
     run_git(
         repository_root,
         &[
@@ -191,6 +200,96 @@ pub fn list_lore_refs(repository_root: impl AsRef<Path>) -> Result<Vec<(String, 
         .filter_map(|line| line.split_once(' '))
         .map(|(name, hash)| (name.to_string(), hash.to_string()))
         .collect())
+}
+
+fn load_lore_atom_from_note(
+    repository_root: &Path,
+    source_commit: &str,
+    atom_id: &str,
+) -> Option<LoreAtom> {
+    let note = run_git_output(
+        repository_root,
+        &["notes", "--ref=refs/notes/lore", "show", source_commit],
+    )
+    .ok()?;
+
+    let mut note_atoms = parse_note_atoms(&note);
+    let mut atom = note_atoms.remove(atom_id)?;
+    atom.id = atom_id.to_string();
+    atom.state = AtomState::Accepted;
+    Some(atom)
+}
+
+fn load_lore_atom_from_commit_trailer(
+    repository_root: &Path,
+    source_commit: &str,
+    atom_id: &str,
+) -> Option<LoreAtom> {
+    let message = run_git_output(repository_root, &["show", "-s", "--format=%B", source_commit]).ok()?;
+    let parsed = parse_commit_message(message.trim());
+
+    for trailer in parsed.trailers {
+        let Some((trailer_atom_id, title)) = parse_trailer_atom_value(&trailer.value) else {
+            continue;
+        };
+
+        if trailer_atom_id != atom_id {
+            continue;
+        }
+
+        let kind = match trailer.key.as_str() {
+            "Lore-Decision" => LoreKind::Decision,
+            "Lore-Assumption" => LoreKind::Assumption,
+            "Lore-Open-Question" => LoreKind::OpenQuestion,
+            "Lore-Signal" => LoreKind::Signal,
+            _ => LoreKind::Decision,
+        };
+
+        return Some(LoreAtom {
+            id: atom_id.to_string(),
+            kind,
+            state: AtomState::Accepted,
+            title,
+            body: Some(format!("Recovered from commit trailer {source_commit}")),
+            scope: Some(format!("sync:{}", atom_id)),
+            path: None,
+            validation_script: None,
+            created_unix_seconds: 0,
+        });
+    }
+
+    None
+}
+
+fn parse_trailer_atom_value(value: &str) -> Option<(&str, String)> {
+    let trimmed = value.trim();
+    let id_end = trimmed.find(']')?;
+    if !trimmed.starts_with('[') || id_end <= 1 {
+        return None;
+    }
+
+    let atom_id = &trimmed[1..id_end];
+    let title = trimmed[id_end + 1..].trim().to_string();
+    if title.is_empty() {
+        return None;
+    }
+
+    Some((atom_id, title))
+}
+
+fn parse_note_atoms(note: &str) -> BTreeMap<String, LoreAtom> {
+    let trimmed = note.trim();
+    if let Ok(map) = serde_json::from_str::<BTreeMap<String, LoreAtom>>(trimmed) {
+        return map;
+    }
+
+    if let Ok(atom) = serde_json::from_str::<LoreAtom>(trimmed) {
+        let mut map = BTreeMap::new();
+        map.insert(atom.id.clone(), atom);
+        return map;
+    }
+
+    BTreeMap::new()
 }
 
 pub fn collect_recent_decisions_for_path(
@@ -314,17 +413,21 @@ pub fn sync_workspace_from_git_history(
 
     for (refname, objectname) in list_lore_refs(repository_root)? {
         if let Some(atom_id) = refname.rsplit('/').next() {
-            let candidate = LoreAtom {
-                id: atom_id.to_string(),
-                kind: LoreKind::Decision,
-                state: AtomState::Accepted,
-                title: format!("Synced accepted lore from {objectname}"),
-                body: Some(format!("Restored from {refname}")),
-                scope: None,
-                path: None,
-                validation_script: None,
-                created_unix_seconds: 0,
-            };
+            let candidate = load_lore_atom_from_note(repository_root, &objectname, atom_id)
+                .or_else(|| {
+                    load_lore_atom_from_commit_trailer(repository_root, &objectname, atom_id)
+                })
+                .unwrap_or_else(|| LoreAtom {
+                    id: atom_id.to_string(),
+                    kind: LoreKind::Decision,
+                    state: AtomState::Accepted,
+                    title: format!("Synced accepted lore from {objectname}"),
+                    body: Some(format!("Restored from {refname}")),
+                    scope: Some(format!("sync:{}", atom_id)),
+                    path: None,
+                    validation_script: None,
+                    created_unix_seconds: 0,
+                });
 
             if let Some(existing) = atoms_by_id.get_mut(atom_id) {
                 if should_replace_with_candidate(existing, &candidate) {
@@ -371,7 +474,7 @@ fn atom_preference_score(atom: &LoreAtom) -> u8 {
     if atom.path.is_some() {
         score += 3;
     }
-    if atom.scope.is_some() {
+    if atom.scope.is_some() && !is_synced_placeholder(atom) {
         score += 2;
     }
     if atom.body.is_some() {
@@ -389,7 +492,6 @@ fn atom_preference_score(atom: &LoreAtom) -> u8 {
 fn is_synced_placeholder(atom: &LoreAtom) -> bool {
     atom.created_unix_seconds == 0
         && atom.path.is_none()
-        && atom.scope.is_none()
         && atom.title.starts_with("Synced accepted lore from ")
 }
 
@@ -655,6 +757,190 @@ mod tests {
         assert_eq!(synced.len(), 1);
         assert_eq!(synced[0].id, duplicate_id);
         assert_eq!(synced[0].title, "Newer duplicate");
+    }
+
+    #[test]
+    fn sync_workspace_restores_atom_metadata_from_git_notes() {
+        let root = std::env::temp_dir().join(format!("git-lore-sync-notes-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+
+        let init_status = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .arg("init")
+            .status()
+            .unwrap();
+        assert!(init_status.success());
+
+        let workspace = Workspace::init(&root).unwrap();
+        let commit_hash = commit_lore_message(&root, "chore: seed lore refs", true).unwrap();
+        let ref_atom = LoreAtom {
+            id: "sync-note-1".to_string(),
+            kind: LoreKind::Decision,
+            state: AtomState::Accepted,
+            title: "Use deterministic parser scope".to_string(),
+            body: Some("Recovered from git note".to_string()),
+            scope: Some("parser".to_string()),
+            path: Some(PathBuf::from("src/parser/mod.rs")),
+            validation_script: None,
+            created_unix_seconds: 42,
+        };
+        write_lore_ref(&root, &ref_atom, &commit_hash).unwrap();
+
+        workspace
+            .set_state(&WorkspaceState {
+                version: 1,
+                atoms: Vec::new(),
+            })
+            .unwrap();
+
+        let synced = sync_workspace_from_git_history(&root, &workspace).unwrap();
+
+        assert_eq!(synced.len(), 1);
+        assert_eq!(synced[0].id, ref_atom.id);
+        assert_eq!(synced[0].title, ref_atom.title);
+        assert_eq!(synced[0].body, ref_atom.body);
+        assert_eq!(synced[0].scope, ref_atom.scope);
+        assert_eq!(synced[0].path, ref_atom.path);
+        assert_eq!(synced[0].state, AtomState::Accepted);
+    }
+
+    #[test]
+    fn sync_workspace_restores_multiple_atoms_from_same_commit_note() {
+        let root = std::env::temp_dir().join(format!("git-lore-sync-multi-notes-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+
+        let init_status = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .arg("init")
+            .status()
+            .unwrap();
+        assert!(init_status.success());
+
+        let workspace = Workspace::init(&root).unwrap();
+        let commit_hash = commit_lore_message(&root, "chore: seed lore refs", true).unwrap();
+
+        let first = LoreAtom {
+            id: "sync-note-a".to_string(),
+            kind: LoreKind::Decision,
+            state: AtomState::Accepted,
+            title: "Keep parser deterministic".to_string(),
+            body: Some("A".to_string()),
+            scope: Some("parser".to_string()),
+            path: Some(PathBuf::from("src/parser/mod.rs")),
+            validation_script: None,
+            created_unix_seconds: 11,
+        };
+        let second = LoreAtom {
+            id: "sync-note-b".to_string(),
+            kind: LoreKind::Decision,
+            state: AtomState::Accepted,
+            title: "Use explicit transitions".to_string(),
+            body: Some("B".to_string()),
+            scope: Some("lore".to_string()),
+            path: Some(PathBuf::from("src/lore/mod.rs")),
+            validation_script: None,
+            created_unix_seconds: 12,
+        };
+
+        write_lore_ref(&root, &first, &commit_hash).unwrap();
+        write_lore_ref(&root, &second, &commit_hash).unwrap();
+
+        workspace
+            .set_state(&WorkspaceState {
+                version: 1,
+                atoms: Vec::new(),
+            })
+            .unwrap();
+
+        let synced = sync_workspace_from_git_history(&root, &workspace).unwrap();
+        assert_eq!(synced.len(), 2);
+
+        let by_id = synced
+            .into_iter()
+            .map(|atom| (atom.id.clone(), atom))
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(by_id["sync-note-a"].title, first.title);
+        assert_eq!(by_id["sync-note-a"].scope, first.scope);
+        assert_eq!(by_id["sync-note-b"].title, second.title);
+        assert_eq!(by_id["sync-note-b"].scope, second.scope);
+    }
+
+    #[test]
+    fn sync_workspace_falls_back_to_commit_trailers_without_notes() {
+        let root = std::env::temp_dir().join(format!("git-lore-sync-trailer-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+
+        let init_status = Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .arg("init")
+            .status()
+            .unwrap();
+        assert!(init_status.success());
+
+        let workspace = Workspace::init(&root).unwrap();
+
+        let atoms = vec![
+            LoreAtom {
+                id: "sync-trailer-a".to_string(),
+                kind: LoreKind::Decision,
+                state: AtomState::Accepted,
+                title: "Use parser scope".to_string(),
+                body: None,
+                scope: None,
+                path: None,
+                validation_script: None,
+                created_unix_seconds: 1,
+            },
+            LoreAtom {
+                id: "sync-trailer-b".to_string(),
+                kind: LoreKind::Assumption,
+                state: AtomState::Accepted,
+                title: "Keep merge deterministic".to_string(),
+                body: None,
+                scope: None,
+                path: None,
+                validation_script: None,
+                created_unix_seconds: 1,
+            },
+        ];
+
+        let message = build_commit_message("chore: seed lore refs", &atoms);
+        let commit_hash = commit_lore_message(&root, &message, true).unwrap();
+
+        run_git(
+            &root,
+            &["update-ref", "refs/lore/accepted/sync-trailer-a", &commit_hash],
+        )
+        .unwrap();
+        run_git(
+            &root,
+            &["update-ref", "refs/lore/accepted/sync-trailer-b", &commit_hash],
+        )
+        .unwrap();
+
+        workspace
+            .set_state(&WorkspaceState {
+                version: 1,
+                atoms: Vec::new(),
+            })
+            .unwrap();
+
+        let synced = sync_workspace_from_git_history(&root, &workspace).unwrap();
+        assert_eq!(synced.len(), 2);
+
+        let by_id = synced
+            .into_iter()
+            .map(|atom| (atom.id.clone(), atom))
+            .collect::<BTreeMap<_, _>>();
+
+        assert_eq!(by_id["sync-trailer-a"].title, "Use parser scope");
+        assert_eq!(by_id["sync-trailer-b"].title, "Keep merge deterministic");
+        assert_eq!(by_id["sync-trailer-a"].kind, LoreKind::Decision);
+        assert_eq!(by_id["sync-trailer-b"].kind, LoreKind::Assumption);
     }
 
     #[test]
