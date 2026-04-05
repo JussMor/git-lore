@@ -12,6 +12,8 @@ After each completed implementation slice, update this file and append a short n
 
 ## Recently Completed
 
+- Fixed the remote installer to call `cargo install --git ... --package git-lore` so it no longer collides with the Glore binary package.
+
 - Made `git-lore sync` preserve existing active atom state instead of re-promoting matching refs, and made Glore Refresh reload the full workspace snapshot.
 
 - Clarified `validation_script` as a literal shell command, blocked narrative text before execution, and added regression tests for the preflight path.
