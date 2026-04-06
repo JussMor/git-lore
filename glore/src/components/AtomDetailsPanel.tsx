@@ -31,6 +31,22 @@ type CommitDiffReport = {
   truncated: boolean;
 };
 
+type CheckpointSummary = {
+  id: string;
+  message?: string;
+  created_unix_seconds: number;
+  atom_count: number;
+};
+
+type AuditTransitionSummary = {
+  atom_id: string;
+  previous_state: string;
+  target_state: string;
+  reason: string;
+  actor?: string;
+  transitioned_unix_seconds: number;
+};
+
 type AtomStateValue = "draft" | "proposed" | "accepted" | "deprecated";
 
 type TransitionOption = {
@@ -47,6 +63,9 @@ type Props = {
   diffLoading: boolean;
   diffError: string;
   selectedCommitDiff: CommitDiffReport | null;
+  timelineLoading: boolean;
+  checkpoints: CheckpointSummary[];
+  auditEvents: AuditTransitionSummary[];
   targetState: AtomStateValue | "";
   onTargetStateChange: (value: AtomStateValue | "") => void;
   stateReason: string;
@@ -106,6 +125,14 @@ const commitTooltipText = (commit: GitContextCommit) =>
 const stripTrailerPrefix = (value: string) =>
   value.replace(/^\[[^\]]+\]\s*/, "").trim();
 
+const formatUnix = (value: number) =>
+  new Date(value * 1000).toLocaleString(undefined, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 const getAllowedTransitions = (currentState: string): TransitionOption[] => {
   const normalized = currentState.trim().toLowerCase();
 
@@ -136,6 +163,9 @@ export function AtomDetailsPanel({
   diffLoading,
   diffError,
   selectedCommitDiff,
+  timelineLoading,
+  checkpoints,
+  auditEvents,
   targetState,
   onTargetStateChange,
   stateReason,
@@ -374,6 +404,93 @@ export function AtomDetailsPanel({
                 ) : (
                   <div className="text-[10px] text-gray-500">
                     No git context found for this atom path yet.
+                  </div>
+                )}
+              </section>
+
+              <section className="pt-4 pb-4 border-b border-[#333333]">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-[0.95rem] font-semibold text-white">
+                    Checkpoints
+                  </h3>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] text-gray-300">
+                    {checkpoints.length}
+                  </span>
+                </div>
+
+                {timelineLoading ? (
+                  <div className="text-[10px] text-gray-500">
+                    Loading timeline...
+                  </div>
+                ) : checkpoints.length > 0 ? (
+                  <div className="max-h-32 overflow-y-auto space-y-1 text-[10px] text-gray-300">
+                    {checkpoints.slice(0, 20).map((checkpoint) => (
+                      <div
+                        key={checkpoint.id}
+                        className="rounded border border-[#3b3b3b] bg-[#1f1f1f] px-2 py-1.5"
+                      >
+                        <div className="truncate font-medium text-gray-100">
+                          {checkpoint.message?.trim() || "checkpoint"}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 text-[9px] text-gray-500">
+                          <span className="font-mono">
+                            {shortHash(checkpoint.id)}
+                          </span>
+                          <span>·</span>
+                          <span>{checkpoint.atom_count} atoms</span>
+                          <span>·</span>
+                          <span>
+                            {formatUnix(checkpoint.created_unix_seconds)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-gray-500">
+                    No checkpoints recorded yet.
+                  </div>
+                )}
+
+                <div className="mt-4 mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-[0.95rem] font-semibold text-white">
+                    Audit Trail
+                  </h3>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] text-gray-300">
+                    {auditEvents.length}
+                  </span>
+                </div>
+
+                {timelineLoading ? (
+                  <div className="text-[10px] text-gray-500">
+                    Loading audit events...
+                  </div>
+                ) : auditEvents.length > 0 ? (
+                  <div className="max-h-36 overflow-y-auto space-y-1 text-[10px] text-gray-300">
+                    {auditEvents.slice(0, 30).map((event, index) => (
+                      <div
+                        key={`${event.atom_id}-${event.transitioned_unix_seconds}-${index}`}
+                        className="rounded border border-[#3b3b3b] bg-[#1f1f1f] px-2 py-1.5"
+                      >
+                        <div className="text-gray-100">
+                          {event.previous_state} → {event.target_state}
+                        </div>
+                        <div className="mt-0.5 text-[9px] text-gray-400">
+                          {event.reason}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 text-[9px] text-gray-500">
+                          <span>{event.actor || "unknown-actor"}</span>
+                          <span>·</span>
+                          <span>
+                            {formatUnix(event.transitioned_unix_seconds)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-gray-500">
+                    No audit events for this atom yet.
                   </div>
                 )}
               </section>

@@ -1,18 +1,57 @@
 use git_lore::git;
-use git_lore::lore::{AtomState, LoreAtom, LoreKind, Workspace};
+use git_lore::lore::{AtomState, LoreAtom, LoreKind, StateTransitionAuditEvent, Workspace};
+use git_lore::lore::prism::PRISM_STALE_TTL_SECONDS;
 use git_lore::mcp::{McpService, ProposalRequest};
+use flate2::read::GzDecoder;
 use notify::{recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::fs;
+use std::io::Read;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, State};
 
 #[derive(Clone, Debug, Serialize)]
 struct WorkspaceSnapshot {
     root: String,
     atoms: Vec<LoreAtom>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct CheckpointSummary {
+    id: String,
+    message: Option<String>,
+    created_unix_seconds: u64,
+    atom_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AuditTransitionSummary {
+    atom_id: String,
+    previous_state: String,
+    target_state: String,
+    reason: String,
+    actor: Option<String>,
+    transitioned_unix_seconds: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct WorkspaceTimelineReport {
+    root: String,
+    checkpoints: Vec<CheckpointSummary>,
+    audit_events: Vec<AuditTransitionSummary>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct StoredCheckpoint {
+    id: String,
+    message: Option<String>,
+    created_unix_seconds: u64,
+    atoms: Vec<Value>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -198,11 +237,153 @@ impl From<AtomStateArg> for AtomState {
 
 fn workspace_snapshot(workspace: &Workspace) -> Result<WorkspaceSnapshot, String> {
     let state = workspace.load_state().map_err(|error| error.to_string())?;
+    let mut atoms = state.atoms;
+    let now = now_unix_seconds();
+
+    for signal in workspace
+        .load_prism_signals()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|signal| now.saturating_sub(signal.created_unix_seconds) <= PRISM_STALE_TTL_SECONDS)
+    {
+        let signal_id = format!("prism-signal::{}", signal.session_id);
+        if atoms.iter().any(|atom| atom.id == signal_id) {
+            continue;
+        }
+
+        let title = signal
+            .decision
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("PRISM: {value}"))
+            .unwrap_or_else(|| format!("PRISM signal {}", signal.session_id));
+
+        let assumptions = if signal.assumptions.is_empty() {
+            "none".to_string()
+        } else {
+            signal.assumptions.join(" | ")
+        };
+
+        atoms.push(LoreAtom {
+            id: signal_id,
+            kind: LoreKind::Signal,
+            state: AtomState::Deprecated,
+            title,
+            body: Some(format!(
+                "Ephemeral PRISM signal\nagent: {}\npaths: {}\nassumptions: {}",
+                signal.agent.as_deref().unwrap_or("unknown-agent"),
+                signal.paths.join(", "),
+                assumptions,
+            )),
+            scope: signal.scope,
+            path: None,
+            validation_script: None,
+            created_unix_seconds: signal.created_unix_seconds,
+        });
+    }
 
     Ok(WorkspaceSnapshot {
         root: workspace.root().to_string_lossy().to_string(),
-        atoms: state.atoms,
+        atoms,
     })
+}
+
+fn now_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn read_json_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    if !bytes.starts_with(&[0x1f, 0x8b]) {
+        return Ok(bytes);
+    }
+
+    let mut decoder = GzDecoder::new(bytes.as_slice());
+    let mut decoded = Vec::new();
+    decoder
+        .read_to_end(&mut decoded)
+        .map_err(|error| error.to_string())?;
+    Ok(decoded)
+}
+
+fn load_checkpoint_summaries(workspace: &Workspace, limit: usize) -> Result<Vec<CheckpointSummary>, String> {
+    let checkpoints_dir = workspace.root().join(".lore").join("checkpoints");
+    if !checkpoints_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut checkpoints = Vec::new();
+    for entry in fs::read_dir(&checkpoints_dir).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+
+        let bytes = read_json_bytes(&path)?;
+        let checkpoint: StoredCheckpoint =
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        checkpoints.push(CheckpointSummary {
+            id: checkpoint.id,
+            message: checkpoint.message,
+            created_unix_seconds: checkpoint.created_unix_seconds,
+            atom_count: checkpoint.atoms.len(),
+        });
+    }
+
+    checkpoints.sort_by(|left, right| {
+        right
+            .created_unix_seconds
+            .cmp(&left.created_unix_seconds)
+            .then(left.id.cmp(&right.id))
+    });
+    checkpoints.truncate(limit);
+    Ok(checkpoints)
+}
+
+fn load_audit_events(workspace: &Workspace, limit: usize) -> Result<Vec<AuditTransitionSummary>, String> {
+    let audit_path = workspace
+        .root()
+        .join(".lore")
+        .join("audit")
+        .join("state_transitions.jsonl");
+
+    if !audit_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = fs::read_to_string(&audit_path).map_err(|error| error.to_string())?;
+    let mut events = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let event: StateTransitionAuditEvent =
+            serde_json::from_str(trimmed).map_err(|error| error.to_string())?;
+        events.push(AuditTransitionSummary {
+            atom_id: event.atom_id,
+            previous_state: format!("{:?}", event.previous_state).to_ascii_lowercase(),
+            target_state: format!("{:?}", event.target_state).to_ascii_lowercase(),
+            reason: event.reason,
+            actor: event.actor,
+            transitioned_unix_seconds: event.transitioned_unix_seconds,
+        });
+    }
+
+    events.sort_by(|left, right| {
+        right
+            .transitioned_unix_seconds
+            .cmp(&left.transitioned_unix_seconds)
+            .then(left.atom_id.cmp(&right.atom_id))
+    });
+    events.truncate(limit);
+    Ok(events)
 }
 
 fn discover_workspace(path: Option<String>) -> Result<Workspace, String> {
@@ -269,7 +450,32 @@ impl WorkspaceWatcherState {
                 .paths
                 .into_iter()
                 .filter(|path| {
-                    path.file_name().and_then(|name| name.to_str()) == Some("active_intent.json")
+                    let is_active_intent =
+                        path.file_name().and_then(|name| name.to_str()) == Some("active_intent.json");
+                    let is_prism_signal =
+                        path.extension().and_then(|extension| extension.to_str()) == Some("signal")
+                            && path
+                                .parent()
+                                .and_then(|parent| parent.file_name())
+                                .and_then(|name| name.to_str())
+                                == Some("prism");
+                    let is_checkpoint =
+                        path.extension().and_then(|extension| extension.to_str()) == Some("json")
+                            && path
+                                .parent()
+                                .and_then(|parent| parent.file_name())
+                                .and_then(|name| name.to_str())
+                                == Some("checkpoints");
+                    let is_audit_log =
+                        path.file_name().and_then(|name| name.to_str())
+                            == Some("state_transitions.jsonl")
+                            && path
+                                .parent()
+                                .and_then(|parent| parent.file_name())
+                                .and_then(|name| name.to_str())
+                                == Some("audit");
+
+                    is_active_intent || is_prism_signal || is_checkpoint || is_audit_log
                 })
                 .map(|path| path.to_string_lossy().to_string())
                 .collect();
@@ -352,6 +558,21 @@ fn workspace_status(path: Option<String>) -> Result<StatusReport, String> {
             })
             .collect(),
         notes: entropy.notes,
+    })
+}
+
+#[tauri::command]
+fn workspace_timeline(path: Option<String>, limit: Option<usize>) -> Result<WorkspaceTimelineReport, String> {
+    let workspace = discover_workspace(path)?;
+    let limit = limit.unwrap_or(40).clamp(1, 200);
+
+    let checkpoints = load_checkpoint_summaries(&workspace, limit)?;
+    let audit_events = load_audit_events(&workspace, limit)?;
+
+    Ok(WorkspaceTimelineReport {
+        root: workspace.root().to_string_lossy().to_string(),
+        checkpoints,
+        audit_events,
     })
 }
 
@@ -721,6 +942,7 @@ pub fn run() {
             init_workspace,
             watch_workspace,
             workspace_status,
+            workspace_timeline,
             validate_workspace,
             mark_atom,
             set_atom_state,
