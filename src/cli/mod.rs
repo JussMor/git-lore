@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::git;
 use crate::lore::prism::{PrismSignal, PRISM_STALE_TTL_SECONDS};
-use crate::lore::{AtomState, LoreAtom, LoreKind, Workspace, WorkspaceState};
+use crate::lore::{AtomEditRequest, AtomState, LoreAtom, LoreKind, Workspace, WorkspaceState};
 use crate::mcp::{McpService, PreflightSeverity, ProposalRequest};
 
 #[derive(Parser, Debug)]
@@ -38,6 +38,10 @@ enum Commands {
     Commit(CommitArgs),
     /// Emit ephemeral PRISM signals (soft-locks)
     Signal(SignalArgs),
+    /// Start an operational lore session (signal + pre-write checkpoint)
+    SessionStart(SessionStartArgs),
+    /// Finish an operational lore session (validate + commit + sync + post-sync checkpoint + release)
+    SessionFinish(SessionFinishArgs),
     /// Fetch active lore constraints and history for a file
     Context(ContextArgs),
     /// Propose a new Lore Atom
@@ -56,6 +60,8 @@ enum Commands {
     Merge(MergeArgs),
     /// Alter the lifecycle state of an existing Lore Atom
     SetState(SetStateArgs),
+    /// Edit an existing Lore Atom in-place (metadata/trace)
+    EditAtom(EditAtomArgs),
     /// Generates LLM integration instructions/skills (e.g. for GitHub Copilot)
     Generate(GenerateArgs),
     /// Interactively resolve active content contradictions at a specific location
@@ -173,6 +179,62 @@ struct SignalArgs {
 }
 
 #[derive(Args, Debug)]
+struct SessionStartArgs {
+    /// Workspace path
+    #[arg(default_value = ".")]
+    workspace: PathBuf,
+    /// Identifier for the active session (auto-generated if missing)
+    #[arg(long)]
+    session_id: Option<String>,
+    /// The name/identity of the emitting agent
+    #[arg(long)]
+    agent: Option<String>,
+    /// Target code scope
+    #[arg(long)]
+    scope: Option<String>,
+    /// The affected file(s) or directories globs
+    #[arg(long = "path", value_name = "GLOB")]
+    paths: Vec<String>,
+    /// The temporary assumptions running in memory
+    #[arg(long = "assumption")]
+    assumptions: Vec<String>,
+    /// A tentative brief goal or decision
+    #[arg(long)]
+    decision: Option<String>,
+    /// Optional reason to include in the pre-write checkpoint message
+    #[arg(long)]
+    reason: Option<String>,
+    /// Optional explicit checkpoint message
+    #[arg(long = "checkpoint-message")]
+    checkpoint_message: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct SessionFinishArgs {
+    /// Workspace path
+    #[arg(default_value = ".")]
+    workspace: PathBuf,
+    /// Session identifier emitted by session-start
+    #[arg(long)]
+    session_id: String,
+    /// Your commit message subject
+    #[arg(long)]
+    message: String,
+    /// Allow committing even if no files changed (lore changes only)
+    #[arg(long, default_value_t = true)]
+    allow_empty: bool,
+    /// Optional owner name for the post-sync checkpoint message
+    #[arg(long)]
+    agent: Option<String>,
+    /// Optional reason to include in the post-sync checkpoint message
+    #[arg(long)]
+    reason: Option<String>,
+    /// Optional explicit checkpoint message
+    #[arg(long = "checkpoint-message")]
+    checkpoint_message: Option<String>,
+}
+
+#[derive(Args, Debug)]
 struct ContextArgs {
     /// Workspace path
     #[arg(default_value = ".")]
@@ -280,6 +342,58 @@ struct SetStateArgs {
     actor: Option<String>,
 }
 
+#[derive(Args, Debug)]
+struct EditAtomArgs {
+    /// Workspace path
+    #[arg(default_value = ".")]
+    path: PathBuf,
+    /// The ID of the atom to edit
+    #[arg(long = "atom-id")]
+    atom_id: String,
+    /// Optional new lore kind
+    #[arg(long, value_enum)]
+    kind: Option<LoreKindArg>,
+    /// Optional new title
+    #[arg(long)]
+    title: Option<String>,
+    /// Optional new body
+    #[arg(long)]
+    body: Option<String>,
+    /// Clear existing body
+    #[arg(long, default_value_t = false)]
+    clear_body: bool,
+    /// Optional new scope
+    #[arg(long)]
+    scope: Option<String>,
+    /// Clear existing scope
+    #[arg(long, default_value_t = false)]
+    clear_scope: bool,
+    /// Optional new atom path anchor
+    #[arg(long = "atom-path")]
+    atom_path: Option<PathBuf>,
+    /// Clear existing atom path anchor
+    #[arg(long, default_value_t = false)]
+    clear_atom_path: bool,
+    /// Optional new validation script command
+    #[arg(long = "validation-script")]
+    validation_script: Option<String>,
+    /// Clear existing validation script
+    #[arg(long, default_value_t = false)]
+    clear_validation_script: bool,
+    /// Set accepted trace commit SHA
+    #[arg(long = "trace-commit-sha")]
+    trace_commit_sha: Option<String>,
+    /// Clear accepted trace commit SHA
+    #[arg(long, default_value_t = false)]
+    clear_trace_commit: bool,
+    /// Required reason for audit logging
+    #[arg(long)]
+    reason: String,
+    /// The actor making the edit
+    #[arg(long)]
+    actor: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum LoreKindArg {
     Decision,
@@ -306,6 +420,8 @@ pub fn run() -> Result<()> {
         Commands::Checkpoint(args) => checkpoint(args),
         Commands::Commit(args) => commit(args),
         Commands::Signal(args) => signal(args),
+        Commands::SessionStart(args) => session_start(args),
+        Commands::SessionFinish(args) => session_finish(args),
         Commands::Context(args) => context(args),
         Commands::Propose(args) => propose(args),
         Commands::Mcp(args) => mcp(args),
@@ -315,6 +431,7 @@ pub fn run() -> Result<()> {
         Commands::Install(args) => install(args),
         Commands::Merge(args) => merge(args),
         Commands::SetState(args) => set_state(args),
+        Commands::EditAtom(args) => edit_atom(args),
         Commands::Generate(args) => generate(args),
         Commands::Resolve(args) => resolve(args),
     }
@@ -567,10 +684,17 @@ fn commit(args: CommitArgs) -> Result<()> {
     let workspace = Workspace::discover(&args.path)?;
     enforce_cli_write_guard(workspace.root(), "commit")?;
 
+    let hash = run_lore_commit(&workspace, &args.message, args.allow_empty)?;
+
+    println!("Committed lore checkpoint {}", hash);
+    Ok(())
+}
+
+fn run_lore_commit(workspace: &Workspace, message: impl AsRef<str>, allow_empty: bool) -> Result<String> {
     let repository_root = git::discover_repository(workspace.root())?;
     let state = workspace.load_state()?;
 
-    let validation_issues = git::validate_workspace_against_git(&repository_root, &workspace)?;
+    let validation_issues = git::validate_workspace_against_git(&repository_root, workspace)?;
     if !validation_issues.is_empty() {
         anyhow::bail!(
             "validation failed: {}",
@@ -578,19 +702,156 @@ fn commit(args: CommitArgs) -> Result<()> {
         );
     }
 
-    let commit_message = git::build_commit_message(args.message, &state.atoms);
+    let commit_message = git::build_commit_message(message, &state.atoms);
 
-    let hash = git::commit_lore_message(&repository_root, commit_message, args.allow_empty)?;
+    let hash = git::commit_lore_message(&repository_root, commit_message, allow_empty)?;
     workspace.accept_active_atoms(Some(&hash))?;
 
     for atom in state.atoms.iter().filter(|atom| atom.state != AtomState::Deprecated) {
         git::write_lore_ref(&repository_root, atom, &hash)?;
     }
 
-    println!("Committed lore checkpoint {}", hash);
+    Ok(hash)
+}
+
+fn session_start(args: SessionStartArgs) -> Result<()> {
+    let workspace = Workspace::discover(&args.workspace)?;
+    enforce_cli_signal_guard(workspace.root())?;
+
+    let pruned_stale = workspace.prune_stale_prism_signals(PRISM_STALE_TTL_SECONDS)?;
+    if pruned_stale > 0 {
+        println!("Pruned {pruned_stale} stale PRISM signal(s) before starting session");
+    }
+
+    let mut paths = args.paths;
+    if paths.is_empty() {
+        paths.push(".".to_string());
+    }
+
+    let signal = PrismSignal::new(
+        args.session_id.unwrap_or_else(|| Uuid::new_v4().to_string()),
+        args.agent,
+        args.scope,
+        paths,
+        args.assumptions,
+        args.decision,
+    );
+
+    workspace.write_prism_signal(&signal)?;
+    let conflicts = workspace.scan_prism_conflicts(&signal)?;
+
+    enforce_cli_write_guard(workspace.root(), "commit")?;
+    let checkpoint_message = args.checkpoint_message.unwrap_or_else(|| {
+        build_session_checkpoint_message(
+            "pre-write",
+            &signal.session_id,
+            signal.agent.as_deref(),
+            args.reason.as_deref(),
+            None,
+        )
+    });
+    let checkpoint = workspace.write_checkpoint(Some(checkpoint_message))?;
+
+    println!("Session started: {}", signal.session_id);
+    println!("Pre-write checkpoint: {}", checkpoint.id);
+
+    if conflicts.is_empty() {
+        println!("No soft-lock conflicts detected.");
+    } else {
+        println!("Soft-lock warnings:");
+        for conflict in conflicts {
+            let agent = conflict.agent.as_deref().unwrap_or("unknown-agent");
+            let scope = conflict.scope.as_deref().unwrap_or("unknown-scope");
+            let decision = conflict.decision.as_deref().unwrap_or("no decision recorded");
+            println!(
+                "- session {} ({agent}, {scope}) overlaps on {}: {decision}",
+                conflict.session_id,
+                conflict.overlapping_paths.join(", "),
+            );
+        }
+    }
+
+    println!(
+        "Next: run propose/mark updates, then session-finish with --session-id {}",
+        signal.session_id
+    );
+
     Ok(())
 }
 
+fn session_finish(args: SessionFinishArgs) -> Result<()> {
+    let workspace = Workspace::discover(&args.workspace)?;
+    enforce_cli_write_guard(workspace.root(), "commit")?;
+
+    let signal_owner = workspace
+        .load_prism_signals()?
+        .into_iter()
+        .find(|signal| signal.session_id == args.session_id)
+        .and_then(|signal| signal.agent);
+
+    let hash = run_lore_commit(&workspace, &args.message, args.allow_empty)?;
+    let repository_root = git::discover_repository(workspace.root())?;
+
+    enforce_cli_write_guard(workspace.root(), "sync")?;
+    let atoms = git::sync_workspace_from_git_history(&repository_root, &workspace)?;
+
+    let checkpoint_owner = args.agent.or(signal_owner);
+    let post_checkpoint_message = args.checkpoint_message.unwrap_or_else(|| {
+        build_session_checkpoint_message(
+            "post-sync",
+            &args.session_id,
+            checkpoint_owner.as_deref(),
+            args.reason.as_deref(),
+            Some(&hash),
+        )
+    });
+    let checkpoint = workspace.write_checkpoint(Some(post_checkpoint_message))?;
+
+    let released = workspace.remove_prism_signal(&args.session_id)?;
+
+    println!("Committed lore checkpoint {}", hash);
+    println!("Synchronized {} lore atoms from Git history", atoms.len());
+    println!("Post-sync checkpoint: {}", checkpoint.id);
+    if released {
+        println!("Released PRISM signal {}", args.session_id);
+    } else {
+        println!("No PRISM signal found for session {}", args.session_id);
+    }
+
+    Ok(())
+}
+
+fn build_session_checkpoint_message(
+    stage: &str,
+    session_id: &str,
+    owner: Option<&str>,
+    reason: Option<&str>,
+    commit_sha: Option<&str>,
+) -> String {
+    let owner = owner
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown");
+
+    let mut parts = vec![
+        format!("owner={owner}"),
+        format!("session={session_id}"),
+        format!("stage={stage}"),
+    ];
+
+    if let Some(reason) = reason.map(str::trim).filter(|value| !value.is_empty()) {
+        parts.push(format!("reason={reason}"));
+    }
+
+    if let Some(commit_sha) = commit_sha
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        parts.push(format!("commit={commit_sha}"));
+    }
+
+    parts.join("; ")
+}
 fn signal(args: SignalArgs) -> Result<()> {
     let workspace = Workspace::discover(&args.workspace)?;
 
@@ -840,6 +1101,85 @@ fn set_state(args: SetStateArgs) -> Result<()> {
     Ok(())
 }
 
+fn edit_atom(args: EditAtomArgs) -> Result<()> {
+    let workspace = Workspace::discover(&args.path)?;
+    enforce_cli_write_guard(workspace.root(), "edit")?;
+
+    if args.body.is_some() && args.clear_body {
+        anyhow::bail!("cannot use --body and --clear-body together");
+    }
+    if args.scope.is_some() && args.clear_scope {
+        anyhow::bail!("cannot use --scope and --clear-scope together");
+    }
+    if args.atom_path.is_some() && args.clear_atom_path {
+        anyhow::bail!("cannot use --atom-path and --clear-atom-path together");
+    }
+    if args.validation_script.is_some() && args.clear_validation_script {
+        anyhow::bail!("cannot use --validation-script and --clear-validation-script together");
+    }
+    if args.trace_commit_sha.is_some() && args.clear_trace_commit {
+        anyhow::bail!("cannot use --trace-commit-sha and --clear-trace-commit together");
+    }
+
+    let body_update = if args.clear_body {
+        Some(None)
+    } else {
+        args.body.map(Some)
+    };
+    let scope_update = if args.clear_scope {
+        Some(None)
+    } else {
+        args.scope.map(Some)
+    };
+    let path_update = if args.clear_atom_path {
+        Some(None)
+    } else {
+        args.atom_path.map(Some)
+    };
+    let validation_script_update = if args.clear_validation_script {
+        Some(None)
+    } else {
+        args.validation_script.map(Some)
+    };
+    let trace_commit_update = if args.clear_trace_commit {
+        Some(None)
+    } else {
+        args.trace_commit_sha.map(Some)
+    };
+
+    let actor = args.actor.or_else(|| std::env::var("USER").ok());
+    let result = workspace.edit_atom(
+        &args.atom_id,
+        AtomEditRequest {
+            kind: args.kind.map(Into::into),
+            title: args.title,
+            body: body_update,
+            scope: scope_update,
+            path: path_update,
+            validation_script: validation_script_update,
+            trace_commit_sha: trace_commit_update,
+        },
+        args.reason,
+        actor,
+    )?;
+
+    if result.changed_fields.is_empty() {
+        println!("No changes applied to lore atom {}", result.atom.id);
+        return Ok(());
+    }
+
+    println!(
+        "Edited lore atom {} in-place ({})",
+        result.atom.id,
+        result.changed_fields.join(", "),
+    );
+    if let Some(source_commit) = result.source_commit {
+        println!("Trace commit: {source_commit}");
+    }
+
+    Ok(())
+}
+
 impl From<LoreKindArg> for LoreKind {
     fn from(value: LoreKindArg) -> Self {
         match value {
@@ -1081,4 +1421,41 @@ fn resolve(args: ResolveArgs) -> Result<()> {
 
     println!("Conflict at {} resolved successfully. [{}] is the winner.", target_location, winner_id);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_session_checkpoint_message;
+
+    #[test]
+    fn session_checkpoint_message_includes_required_fields() {
+        let message = build_session_checkpoint_message(
+            "pre-write",
+            "session-123",
+            Some("agent-x"),
+            Some("capture evidence"),
+            None,
+        );
+
+        assert!(message.contains("owner=agent-x"));
+        assert!(message.contains("session=session-123"));
+        assert!(message.contains("stage=pre-write"));
+        assert!(message.contains("reason=capture evidence"));
+        assert!(!message.contains("commit="));
+    }
+
+    #[test]
+    fn session_checkpoint_message_includes_commit_when_present() {
+        let message = build_session_checkpoint_message(
+            "post-sync",
+            "session-123",
+            None,
+            None,
+            Some("abc123"),
+        );
+
+        assert!(message.contains("owner=unknown"));
+        assert!(message.contains("stage=post-sync"));
+        assert!(message.contains("commit=abc123"));
+    }
 }

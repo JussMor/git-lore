@@ -4,6 +4,10 @@ This file records completed implementation slices and the next handoff point.
 
 ## 2026-04-05
 
+- Added `git-lore edit-atom` so users can update lore atom metadata and accepted trace commit linkage in-place (with required reason/actor audit logging) instead of creating replacement atoms.
+
+- Added `git-lore session-start` and `git-lore session-finish` to collapse the operational flow into two commands while preserving PRISM signal handling, checkpoint evidence, state-first guards, lore-linked commit/sync, and automatic signal release at closeout.
+
 - Updated Glore's Tauri workspace bridge so PRISM `.signal` files are watched and projected into the graph snapshot as ephemeral signal nodes, making agent-created signals visible in near real-time.
 
 - Updated sync to recover full accepted atom metadata from Git notes (including multiple atoms per commit), fallback to commit trailers when note data is missing, and enforced `path`/`scope` anchors for new non-signal atoms to prevent repeated `<no-path>::<no-scope>` conflicts.

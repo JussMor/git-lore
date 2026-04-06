@@ -12,6 +12,10 @@ After each completed implementation slice, update this file and append a short n
 
 ## Recently Completed
 
+- Added `git-lore edit-atom` for in-place lore atom metadata updates (kind/title/body/scope/path/validation script) and accepted trace commit linkage updates, with audited edit events in `.lore/audit/atom_edits.jsonl`.
+
+- Added low-friction operational session commands: `git-lore session-start` (PRISM signal + pre-write checkpoint) and `git-lore session-finish` (validate + lore commit + sync + post-sync checkpoint + signal release), plus CLI tests for structured checkpoint metadata formatting.
+
 - Updated Glore real-time workspace sync to include ephemeral PRISM `.signal` entries in UI snapshots and to trigger reloads on `.lore/prism/*.signal` changes.
 
 - Updated `git-lore sync` to restore full accepted atom metadata from `refs/notes/lore` when available (including multiple atoms on the same commit), fallback to commit trailers when notes are missing, and required non-signal atoms to include `path` or `scope` anchors to reduce `<no-path>::<no-scope>` contradiction noise.
