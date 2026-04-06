@@ -68,6 +68,17 @@ impl Workspace {
         self.write_json(&signal_path, signal)
     }
 
+    pub fn remove_prism_signal(&self, session_id: &str) -> Result<bool> {
+        self.ensure_layout()?;
+        let signal_path = self.prism_signal_path(session_id);
+        if !signal_path.exists() {
+            return Ok(false);
+        }
+
+        fs::remove_file(signal_path)?;
+        Ok(true)
+    }
+
     pub fn load_prism_signals(&self) -> Result<Vec<PrismSignal>> {
         self.ensure_layout()?;
 
@@ -466,5 +477,25 @@ mod tests {
         let remaining = workspace.load_prism_signals().unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].session_id, "fresh-session");
+    }
+
+    #[test]
+    fn removing_prism_signal_deletes_specific_session_file() {
+        let temp_root = std::env::temp_dir().join(format!("git-lore-prism-remove-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_root).unwrap();
+        let workspace = Workspace::init(&temp_root).unwrap();
+
+        let signal = PrismSignal::new(
+            "session-a".to_string(),
+            Some("agent-a".to_string()),
+            None,
+            vec!["src/**".to_string()],
+            vec![],
+            Some("ship ui".to_string()),
+        );
+        workspace.write_prism_signal(&signal).unwrap();
+
+        assert!(workspace.remove_prism_signal("session-a").unwrap());
+        assert!(!workspace.remove_prism_signal("session-a").unwrap());
     }
 }

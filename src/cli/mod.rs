@@ -152,6 +152,9 @@ struct SignalArgs {
     /// Identifier for the active AI session (auto-generated if missing)
     #[arg(long)]
     session_id: Option<String>,
+    /// Release an existing PRISM signal for a session and exit
+    #[arg(long, alias = "clear", default_value_t = false)]
+    release: bool,
     /// The name/identity of the emitting agent
     #[arg(long)]
     agent: Option<String>,
@@ -589,12 +592,28 @@ fn commit(args: CommitArgs) -> Result<()> {
 }
 
 fn signal(args: SignalArgs) -> Result<()> {
+    let workspace = Workspace::discover(&args.workspace)?;
+
+    if args.release {
+        let session_id = args
+            .session_id
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("--session-id is required when using --release"))?;
+
+        let removed = workspace.remove_prism_signal(session_id)?;
+        if removed {
+            println!("Released PRISM signal {session_id}");
+        } else {
+            println!("No PRISM signal found for session {session_id}");
+        }
+        return Ok(());
+    }
+
     if args.paths.is_empty() {
         anyhow::bail!("at least one --path glob is required to broadcast a PRISM signal");
     }
 
-    let workspace = Workspace::discover(&args.workspace)?;
-    enforce_cli_write_guard(workspace.root(), "edit")?;
+    enforce_cli_signal_guard(workspace.root())?;
 
     let pruned_stale = workspace.prune_stale_prism_signals(PRISM_STALE_TTL_SECONDS)?;
     if pruned_stale > 0 {
@@ -938,6 +957,49 @@ fn enforce_cli_write_guard(path: impl AsRef<std::path::Path>, operation: &str) -
 
     Ok(())
 }
+
+fn enforce_cli_signal_guard(path: impl AsRef<std::path::Path>) -> Result<()> {
+    let service = McpService::new(path);
+    let snapshot = service.state_snapshot()?;
+    let report = service.memory_preflight("edit")?;
+
+    if snapshot.state_checksum != report.state_checksum {
+        anyhow::bail!(
+            "state-first guard failed: state drift detected during preflight (snapshot {}, preflight {})",
+            snapshot.state_checksum,
+            report.state_checksum
+        );
+    }
+
+    let blocking_issues = report
+        .issues
+        .iter()
+        .filter(|issue| issue.severity == PreflightSeverity::Block)
+        .filter(|issue| issue.code != "prism_hard_lock")
+        .collect::<Vec<_>>();
+
+    if !blocking_issues.is_empty() {
+        println!("Preflight issues:");
+        for issue in report.issues {
+            println!("- {:?} {}: {}", issue.severity, issue.code, issue.message);
+        }
+        anyhow::bail!(
+            "state-first preflight blocked signal operation; resolve issues and retry"
+        );
+    }
+
+    for issue in report
+        .issues
+        .iter()
+        .filter(|issue| issue.code != "prism_hard_lock")
+        .filter(|issue| issue.severity != PreflightSeverity::Info)
+    {
+        println!("Preflight {:?} {}: {}", issue.severity, issue.code, issue.message);
+    }
+
+    Ok(())
+}
+
 fn resolve(args: ResolveArgs) -> Result<()> {
     let workspace = Workspace::discover(&args.path)?;
     enforce_cli_write_guard(workspace.root(), "edit")?;

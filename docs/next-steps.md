@@ -12,6 +12,8 @@ After each completed implementation slice, update this file and append a short n
 
 ## Recently Completed
 
+- Updated Glore real-time workspace sync to include ephemeral PRISM `.signal` entries in UI snapshots and to trigger reloads on `.lore/prism/*.signal` changes.
+
 - Updated `git-lore sync` to restore full accepted atom metadata from `refs/notes/lore` when available (including multiple atoms on the same commit), fallback to commit trailers when notes are missing, and required non-signal atoms to include `path` or `scope` anchors to reduce `<no-path>::<no-scope>` contradiction noise.
 
 - Fixed the remote installer to call `cargo install --git ... --package git-lore` so it no longer collides with the Glore binary package.

@@ -83,6 +83,28 @@ type CommitDiffReport = {
   truncated: boolean;
 };
 
+type CheckpointSummary = {
+  id: string;
+  message?: string;
+  created_unix_seconds: number;
+  atom_count: number;
+};
+
+type AuditTransitionSummary = {
+  atom_id: string;
+  previous_state: string;
+  target_state: string;
+  reason: string;
+  actor?: string;
+  transitioned_unix_seconds: number;
+};
+
+type WorkspaceTimelineReport = {
+  root: string;
+  checkpoints: CheckpointSummary[];
+  audit_events: AuditTransitionSummary[];
+};
+
 type GitContextCommit = {
   commit_hash: string;
   subject: string;
@@ -247,6 +269,10 @@ function App() {
     useState<CommitDiffReport | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState<string>("");
+  const [timeline, setTimeline] = useState<WorkspaceTimelineReport | null>(
+    null,
+  );
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [recentAtomIds, setRecentAtomIds] = useState<string[]>([]);
 
   const atomsRef = useRef<LoreAtom[]>([]);
@@ -311,6 +337,16 @@ function App() {
     return [...grouped.values()];
   }, [atomContext]);
 
+  const selectedAtomAuditEvents = useMemo<AuditTransitionSummary[]>(() => {
+    if (!timeline || !selectedAtom) {
+      return [];
+    }
+
+    return timeline.audit_events
+      .filter((event) => event.atom_id === selectedAtom.id)
+      .slice(0, 40);
+  }, [timeline, selectedAtom]);
+
   useEffect(() => {
     if (filteredAtoms.length === 0) {
       if (selectedAtomId !== null) {
@@ -366,6 +402,14 @@ function App() {
 
   useEffect(() => {
     if (!selectedAtom || !projectPath) {
+      setAtomContext(null);
+      setSelectedCommitHash(null);
+      setSelectedCommitDiff(null);
+      setDiffError("");
+      return;
+    }
+
+    if (selectedAtom.id.startsWith("prism-signal::")) {
       setAtomContext(null);
       setSelectedCommitHash(null);
       setSelectedCommitDiff(null);
@@ -542,10 +586,12 @@ function App() {
 
       pushLog("success", `Loaded workspace at ${snapshot.root}`);
       await refreshStatus(path, true);
+      await refreshTimeline(path, true);
     } catch (cause) {
       setRoot("");
       setAtoms([]);
       setStatus(null);
+      setTimeline(null);
       setValidation(null);
       setSelectedAtomId(null);
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -568,6 +614,30 @@ function App() {
       if (!silent) {
         pushLog("error", `Status refresh failed: ${message}`);
       }
+    }
+  };
+
+  const refreshTimeline = async (path: string, silent = false) => {
+    setTimelineLoading(true);
+    try {
+      const report = await invoke<WorkspaceTimelineReport>(
+        "workspace_timeline",
+        {
+          path,
+          limit: 80,
+        },
+      );
+      setTimeline(report);
+      if (!silent) {
+        pushLog("info", `Timeline refreshed for ${report.root}`);
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      if (!silent) {
+        pushLog("error", `Timeline refresh failed: ${message}`);
+      }
+    } finally {
+      setTimelineLoading(false);
     }
   };
 
@@ -620,6 +690,7 @@ function App() {
       setError("");
       pushLog("success", `Initialized .lore workspace at ${snapshot.root}`);
       await refreshStatus(projectPath, true);
+      await refreshTimeline(projectPath, true);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       pushLog("error", `Init failed: ${message}`);
@@ -662,6 +733,7 @@ function App() {
       setShowCreateAtom(false);
       pushLog("success", `Created new ${newAtomKind} atom`);
       await refreshStatus(projectPath, true);
+      await refreshTimeline(projectPath, true);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       pushLog("error", `Create atom failed: ${message}`);
@@ -706,6 +778,7 @@ function App() {
         `Transitioned atom ${selectedAtom.id} to ${targetState}`,
       );
       await refreshStatus(projectPath, true);
+      await refreshTimeline(projectPath, true);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       pushLog("error", `State transition failed: ${message}`);
@@ -847,6 +920,7 @@ function App() {
     commitWorkspaceSnapshot(snapshot);
     pushLog("success", `Created signal atom: ${title.trim()}`);
     await refreshStatus(projectPath, true);
+    await refreshTimeline(projectPath, true);
   };
 
   const setStateFromCommand = async (
@@ -876,6 +950,7 @@ function App() {
     commitWorkspaceSnapshot(snapshot);
     pushLog("success", `Transitioned atom to ${nextState}`);
     await refreshStatus(projectPath, true);
+    await refreshTimeline(projectPath, true);
   };
 
   const executeConsoleCommand = async (raw: string) => {
@@ -1229,6 +1304,9 @@ function App() {
           diffLoading={diffLoading}
           diffError={diffError}
           selectedCommitDiff={selectedCommitDiff}
+          timelineLoading={timelineLoading}
+          checkpoints={timeline?.checkpoints ?? []}
+          auditEvents={selectedAtomAuditEvents}
           targetState={targetState}
           onTargetStateChange={setTargetState}
           stateReason={stateReason}
