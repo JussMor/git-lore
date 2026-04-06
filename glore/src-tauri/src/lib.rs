@@ -27,6 +27,7 @@ struct CheckpointSummary {
     message: Option<String>,
     created_unix_seconds: u64,
     atom_count: usize,
+    atom_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -268,7 +269,7 @@ fn workspace_snapshot(workspace: &Workspace) -> Result<WorkspaceSnapshot, String
         atoms.push(LoreAtom {
             id: signal_id,
             kind: LoreKind::Signal,
-            state: AtomState::Deprecated,
+            state: AtomState::Proposed,
             title,
             body: Some(format!(
                 "Ephemeral PRISM signal\nagent: {}\npaths: {}\nassumptions: {}",
@@ -277,7 +278,7 @@ fn workspace_snapshot(workspace: &Workspace) -> Result<WorkspaceSnapshot, String
                 assumptions,
             )),
             scope: signal.scope,
-            path: None,
+            path: signal.paths.first().map(PathBuf::from),
             validation_script: None,
             created_unix_seconds: signal.created_unix_seconds,
         });
@@ -327,11 +328,24 @@ fn load_checkpoint_summaries(workspace: &Workspace, limit: usize) -> Result<Vec<
         let bytes = read_json_bytes(&path)?;
         let checkpoint: StoredCheckpoint =
             serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+
+        let mut atom_ids: Vec<String> = Vec::new();
+        for atom in &checkpoint.atoms {
+            let Some(id) = atom.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+
+            if !atom_ids.iter().any(|existing| existing == id) {
+                atom_ids.push(id.to_string());
+            }
+        }
+
         checkpoints.push(CheckpointSummary {
             id: checkpoint.id,
             message: checkpoint.message,
             created_unix_seconds: checkpoint.created_unix_seconds,
             atom_count: checkpoint.atoms.len(),
+            atom_ids,
         });
     }
 

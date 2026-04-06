@@ -88,6 +88,7 @@ type CheckpointSummary = {
   message?: string;
   created_unix_seconds: number;
   atom_count: number;
+  atom_ids: string[];
 };
 
 type AuditTransitionSummary = {
@@ -344,6 +345,16 @@ function App() {
 
     return timeline.audit_events
       .filter((event) => event.atom_id === selectedAtom.id)
+      .slice(0, 40);
+  }, [timeline, selectedAtom]);
+
+  const selectedAtomCheckpoints = useMemo<CheckpointSummary[]>(() => {
+    if (!timeline || !selectedAtom) {
+      return [];
+    }
+
+    return timeline.checkpoints
+      .filter((checkpoint) => checkpoint.atom_ids.includes(selectedAtom.id))
       .slice(0, 40);
   }, [timeline, selectedAtom]);
 
@@ -748,6 +759,14 @@ function App() {
       return;
     }
 
+    if (selectedAtom.id.startsWith("prism-signal::")) {
+      pushLog(
+        "error",
+        "PRISM lock sessions are ephemeral; release them with git-lore signal --release --session-id <id>.",
+      );
+      return;
+    }
+
     if (!targetState) {
       pushLog("error", "Choose a lifecycle transition first.");
       return;
@@ -929,6 +948,14 @@ function App() {
   ) => {
     if (!projectPath || !selectedAtom) {
       pushLog("error", "Select a project and atom first.");
+      return;
+    }
+
+    if (selectedAtom.id.startsWith("prism-signal::")) {
+      pushLog(
+        "error",
+        "PRISM lock sessions are ephemeral; release them with git-lore signal --release --session-id <id>.",
+      );
       return;
     }
 
@@ -1305,7 +1332,7 @@ function App() {
           diffError={diffError}
           selectedCommitDiff={selectedCommitDiff}
           timelineLoading={timelineLoading}
-          checkpoints={timeline?.checkpoints ?? []}
+          checkpoints={selectedAtomCheckpoints}
           auditEvents={selectedAtomAuditEvents}
           targetState={targetState}
           onTargetStateChange={setTargetState}

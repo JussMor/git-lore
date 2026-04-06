@@ -98,6 +98,11 @@ const stateBadgeClass = (state: string) => {
   }
 };
 
+const ACTIVE_LOCK_STATE_BADGE_CLASS =
+  "border-cyan-700/50 bg-cyan-950/20 text-cyan-200";
+
+const PRISM_SIGNAL_PREFIX = "prism-signal::";
+
 const kindBadgeClass = (kind: string) => {
   const normalized = kind.trim().toLowerCase();
   switch (normalized) {
@@ -188,9 +193,15 @@ export function AtomDetailsPanel({
   }, [selectedAtom]);
 
   const selectedPath = selectedAtom?.path?.trim() ?? "";
-  const transitionOptions = selectedAtom
-    ? getAllowedTransitions(selectedAtom.state)
-    : [];
+  const isPrismSignal =
+    selectedAtom?.id.startsWith(PRISM_SIGNAL_PREFIX) ?? false;
+  const prismSessionId = isPrismSignal
+    ? selectedAtom?.id.slice(PRISM_SIGNAL_PREFIX.length)
+    : "";
+  const transitionOptions =
+    selectedAtom && !isPrismSignal
+      ? getAllowedTransitions(selectedAtom.state)
+      : [];
   const selectedTransitionIsAllowed =
     targetState !== "" &&
     transitionOptions.some((option) => option.value === targetState);
@@ -250,11 +261,23 @@ export function AtomDetailsPanel({
                     {humanize(selectedAtom.kind)}
                   </span>
                   <span
-                    className={`rounded-full border px-3 py-1 text-[0.68rem] ${stateBadgeClass(selectedAtom.state)}`}
+                    className={`rounded-full border px-3 py-1 text-[0.68rem] ${
+                      isPrismSignal
+                        ? ACTIVE_LOCK_STATE_BADGE_CLASS
+                        : stateBadgeClass(selectedAtom.state)
+                    }`}
                   >
-                    {humanize(selectedAtom.state)}
+                    {isPrismSignal
+                      ? "Active Lock"
+                      : humanize(selectedAtom.state)}
                   </span>
                 </div>
+
+                {isPrismSignal ? (
+                  <div className="mt-2 text-[10px] text-cyan-200/90">
+                    Ephemeral PRISM session lock (no lifecycle state).
+                  </div>
+                ) : null}
 
                 <button
                   type="button"
@@ -448,7 +471,7 @@ export function AtomDetailsPanel({
                   </div>
                 ) : (
                   <div className="text-[10px] text-gray-500">
-                    No checkpoints recorded yet.
+                    No checkpoints linked to this atom yet.
                   </div>
                 )}
 
@@ -499,10 +522,16 @@ export function AtomDetailsPanel({
                 <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-300">
                   Lifecycle Transition
                 </div>
+                {isPrismSignal ? (
+                  <div className="mb-2 rounded border border-cyan-900/50 bg-cyan-950/20 px-2 py-1.5 text-[10px] text-cyan-200">
+                    This is a PRISM lock session, not a lifecycle atom.
+                    {prismSessionId ? ` Session: ${prismSessionId}` : ""}
+                  </div>
+                ) : null}
                 <select
                   className="mb-2 w-full rounded border border-[#404040] bg-[#1f1f1f] px-2 py-1.5 text-[10px] text-gray-200 outline-none focus:border-[#4fc3f7] disabled:cursor-not-allowed disabled:opacity-60"
                   value={targetState || ""}
-                  disabled={transitionOptions.length === 0}
+                  disabled={transitionOptions.length === 0 || isPrismSignal}
                   onChange={(event) =>
                     onTargetStateChange(
                       event.target.value as AtomStateValue | "",
@@ -520,10 +549,16 @@ export function AtomDetailsPanel({
                 </select>
                 {selectedAtom ? (
                   <div className="mb-2 text-[10px] text-gray-500">
-                    Current state: {selectedAtom.state.trim().toLowerCase()}.{" "}
-                    {transitionOptions.length > 0
-                      ? `Available transitions: ${transitionOptions.map((option) => option.label).join(", ")}.`
-                      : "No lifecycle transitions are available from this state."}
+                    Current state:{" "}
+                    {isPrismSignal
+                      ? "active_lock"
+                      : selectedAtom.state.trim().toLowerCase()}
+                    .{" "}
+                    {isPrismSignal
+                      ? "Manage with git-lore signal --release --session-id <id>."
+                      : transitionOptions.length > 0
+                        ? `Available transitions: ${transitionOptions.map((option) => option.label).join(", ")}.`
+                        : "No lifecycle transitions are available from this state."}
                   </div>
                 ) : null}
                 <textarea
@@ -531,12 +566,18 @@ export function AtomDetailsPanel({
                   rows={3}
                   placeholder="Reason for transition"
                   value={stateReason}
+                  disabled={isPrismSignal}
                   onChange={(event) => onStateReasonChange(event.target.value)}
                 />
                 <button
                   className="w-full rounded-lg bg-[#0e639c] px-2 py-1.5 text-[10px] font-semibold text-white hover:bg-[#1177bb] disabled:opacity-60"
                   onClick={onApplyState}
-                  disabled={working || loading || !selectedTransitionIsAllowed}
+                  disabled={
+                    working ||
+                    loading ||
+                    !selectedTransitionIsAllowed ||
+                    isPrismSignal
+                  }
                 >
                   Apply State
                 </button>

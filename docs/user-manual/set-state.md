@@ -6,6 +6,8 @@ Alters the lifecycle state of an existing Lore Atom.
 
 Git-Lore uses an explicit state machine for its knowledge base. A single rule can evolve over its lifetime.
 
+For metadata or trace updates without changing lifecycle state, use `git-lore edit-atom`.
+
 ## Usage
 
 `git-lore set-state --atom-id <ATOM_ID> --state <STATE> --reason <REASON> [OPTIONS]`

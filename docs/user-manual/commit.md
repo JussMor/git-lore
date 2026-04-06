@@ -6,6 +6,8 @@ Integrates your Git branch with Git-Lore.
 
 It triggers a `git commit` under the hood, but appends all the active/pending Lore atoms as `Git Trailers` (e.g., `Lore-Decision: [id] message`) directly into the Git commit message. This effectively glues the "Why" (the Lore) to the "What" (the changed files in Git's object tree).
 
+For the low-friction operational flow, prefer `git-lore session-finish`, which runs validate + commit + sync + checkpoint + signal release as one closeout command.
+
 ## Usage
 
 `git-lore commit --message <MESSAGE> [OPTIONS]`
